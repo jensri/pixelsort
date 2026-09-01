@@ -45,7 +45,7 @@
 </head>
 <body>
 <main>
-<h1>Pixel-Sort – Sortieralgorithmen auf Bildern <span style="color:#a8a69f;font-size:13px">v3</span></h1>
+<h1>Pixel-Sort – Sortieralgorithmen auf Bildern <span style="color:#a8a69f;font-size:13px">v4</span></h1>
 <canvas id="cv" width="512" height="384"></canvas>
 
 <div class="panel">
@@ -57,7 +57,7 @@
       <option value="shell">Shellsort</option>
       <option value="comb">Comb Sort</option>
     </optgroup>
-    <optgroup label="Sortiernetze (nur 512×512)">
+    <optgroup label="Sortiernetze (nur quadratisch)">
       <option value="bitonic">Bitonic Sort</option>
       <option value="oemerge">Odd-Even Mergesort (Batcher)</option>
     </optgroup>
@@ -67,7 +67,7 @@
       <option value="radixmsd">Radix MSD (binär, in-place)</option>
       <option value="counting">Counting Sort</option>
     </optgroup>
-    <optgroup label="Quadratisch">
+    <optgroup label="Quadratisch (→ 256er-Raster)">
       <option value="insertion">Insertion Sort</option>
       <option value="selection">Selection Sort</option>
       <option value="cycle">Cycle Sort</option>
@@ -103,8 +103,10 @@
     <option value="original">Original (sortiert)</option>
   </select>
   <select id="size" aria-label="Format">
-    <option value="384">512 × 384</option>
-    <option value="512">512 × 512 (2¹⁸ Pixel)</option>
+    <option value="512x384">512 × 384</option>
+    <option value="512x512">512 × 512 (2¹⁸)</option>
+    <option value="256x192">256 × 192</option>
+    <option value="256x256">256 × 256 (2¹⁶)</option>
   </select>
   <button id="up">Bild laden</button>
   <button id="go">Start</button>
@@ -131,7 +133,7 @@
 </div>
 <div id="stat">Bereit</div>
 
-<p class="help">Das Bild wird entlang der gewählten Kurve zu einem 1D-Array aufgerollt, in den gewählten Ausgangszustand gebracht und vom Algorithmus zurücksortiert. Jeder Pixel trägt seinen Originalindex als Sortierschlüssel. Zuletzt berührte Pixel werden weiß überlagert und verblassen mit dem eingestellten Decay. Die Ops-Skala ist logarithmisch; die quadratischen Verfahren laufen bei ~200.000 Elementen nicht in vertretbarer Zeit durch, zeigen aber ihr charakteristisches Muster.</p>
+<p class="help">Das Bild wird entlang der gewählten Kurve zu einem 1D-Array aufgerollt, in den gewählten Ausgangszustand gebracht und vom Algorithmus zurücksortiert. Jeder Pixel trägt seinen Originalindex als Sortierschlüssel. Zuletzt berührte Pixel werden weiß überlagert und verblassen mit dem eingestellten Decay. Die Ops-Skala ist logarithmisch; die quadratischen Verfahren schalten automatisch auf das 256er-Raster (ein Viertel der Pixel, ein Sechzehntel der Laufzeit) und laufen dort in wenigen Minuten durch.</p>
 </main>
 
 <script>
@@ -145,7 +147,7 @@ const $=id=>document.getElementById(id);
 function ftime(ms){const s=ms/1000,m=Math.floor(s/60),r=s-m*60;return m+':'+(r<10?'0':'')+r.toFixed(1).replace('.',',')}
 function alloc(){cv.width=W;cv.height=H;img=ctx.createImageData(W,H);px=new Uint32Array(img.data.buffer);colors=new Uint32Array(N);cseq=new Uint32Array(N);map=new Uint32Array(N);inv=new Uint32Array(N);a=new Uint32Array(N);heat=new Float32Array(N)}
 function hsl(h,s,l){const c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r,g,b;if(h<60){r=c;g=x;b=0}else if(h<120){r=x;g=c;b=0}else if(h<180){r=0;g=c;b=x}else if(h<240){r=0;g=x;b=c}else if(h<300){r=x;g=0;b=c}else{r=c;g=0;b=x}return[(r+m)*255|0,(g+m)*255|0,(b+m)*255|0]}
-function genImage(){for(let y=0;y<H;y++)for(let x=0;x<W;x++){const dx=x-W/2,dy=y-H/2,d=Math.sqrt(dx*dx+dy*dy);let h=(x/W*360+y/H*60)%360,l=0.35+0.4*(1-y/H);if(Math.floor(d/40)%2===0)l*=0.7;if(Math.abs(dx-dy*W/H)<14)l=0.92;const[r,g,b]=hsl(h,0.85,l);colors[y*W+x]=(255<<24)|(b<<16)|(g<<8)|r}}
+function genImage(){const sc=W/512;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const dx=x-W/2,dy=y-H/2,d=Math.sqrt(dx*dx+dy*dy);let h=(x/W*360+y/H*60)%360,l=0.35+0.4*(1-y/H);if(Math.floor(d/(40*sc))%2===0)l*=0.7;if(Math.abs(dx-dy*W/H)<14*sc)l=0.92;const[r,g,b]=hsl(h,0.85,l);colors[y*W+x]=(255<<24)|(b<<16)|(g<<8)|r}}
 function fromImage(im){const oc=document.createElement('canvas');oc.width=W;oc.height=H;const o=oc.getContext('2d');const s=Math.max(W/im.width,H/im.height),w=im.width*s,h=im.height*s;o.drawImage(im,(W-w)/2,(H-h)/2,w,h);colors.set(new Uint32Array(o.getImageData(0,0,W,H).data.buffer))}
 function loadSource(){if(srcImg)fromImage(srcImg);else genImage()}
 function emit(x,y){x=Math.floor(x);y=Math.floor(y);if(x>=0&&x<W&&y>=0&&y<H)map[mk++]=y*W+x}
@@ -156,26 +158,27 @@ col(){let k=0;for(let x=0;x<W;x++)for(let y=0;y<H;y++)map[k++]=y*W+x},
 snake(){let k=0;for(let y=0;y<H;y++){if(y&1)for(let x=W-1;x>=0;x--)map[k++]=y*W+x;else for(let x=0;x<W;x++)map[k++]=y*W+x}},
 diag(){let k=0;for(let s=0;s<W+H-1;s++){const y0=Math.max(0,s-W+1),y1=Math.min(H-1,s);if(s&1)for(let y=y0;y<=y1;y++)map[k++]=y*W+(s-y);else for(let y=y1;y>=y0;y--)map[k++]=y*W+(s-y)}},
 spiral(){let k=0,t=0,b=H-1,l=0,r=W-1;while(t<=b&&l<=r){for(let x=l;x<=r;x++)map[k++]=t*W+x;t++;for(let y=t;y<=b;y++)map[k++]=y*W+r;r--;if(t<=b){for(let x=r;x>=l;x--)map[k++]=b*W+x;b--}if(l<=r){for(let y=b;y>=t;y--)map[k++]=y*W+l;l++}}},
-hilbert(){mk=0;hil(0,0,512,0,0,512,9)},
-moore(){mk=0;const h=256;hil(h,0,0,h,-h,0,8);hil(h,h,0,h,-h,0,8);hil(h,2*h,0,-h,h,0,8);hil(h,h,0,-h,h,0,8)},
-peano(){mk=0;const S=729;for(let d=0;d<S*S;d++){let t=d;const dg=new Array(12);for(let i=11;i>=0;i--){dg[i]=t%3;t=(t-dg[i])/3}let x=0,y=0,sx=0,sy=0;for(let i=0;i<6;i++){let xd=dg[2*i],yd=dg[2*i+1];if(sy&1)xd=2-xd;sy+=yd;sx+=xd;if((sx-xd)&1)yd=2-yd;x=x*3+xd;y=y*3+yd}emit(x,y)}},
-zorder(){mk=0;for(let d=0;d<512*512;d++){let x=0,y=0;for(let b=0;b<9;b++){x|=((d>>(2*b))&1)<<b;y|=((d>>(2*b+1))&1)<<b}emit(x,y)}}
+hilbert(){mk=0;const o=Math.log2(W);hil(0,0,W,0,0,W,o)},
+moore(){mk=0;const h=W/2,o=Math.log2(h);hil(h,0,0,h,-h,0,o);hil(h,h,0,h,-h,0,o);hil(h,2*h,0,-h,h,0,o);hil(h,h,0,-h,h,0,o)},
+peano(){mk=0;const D=W>256?12:10,S=Math.pow(3,D/2);for(let d=0;d<S*S;d++){let t=d;const dg=new Array(D);for(let i=D-1;i>=0;i--){dg[i]=t%3;t=(t-dg[i])/3}let x=0,y=0,sx=0,sy=0;for(let i=0;i<D/2;i++){let xd=dg[2*i],yd=dg[2*i+1];if(sy&1)xd=2-xd;sy+=yd;sx+=xd;if((sx-xd)&1)yd=2-yd;x=x*3+xd;y=y*3+yd}emit(x,y)}},
+zorder(){mk=0;const B=Math.log2(W);for(let d=0;d<W*W;d++){let x=0,y=0;for(let b=0;b<B;b++){x|=((d>>(2*b))&1)<<b;y|=((d>>(2*b+1))&1)<<b}emit(x,y)}}
 };
 function buildCurve(){curves[$('curve').value]();for(let k=0;k<N;k++){cseq[k]=colors[map[k]];inv[map[k]]=k}}
 function byPixel(src){for(let k=0;k<N;k++){const p=map[k],x=p%W,y=(p-x)/W;a[k]=inv[src(x,y)]}}
 const modes={
 random(){for(let i=0;i<N;i++)a[i]=i;for(let i=N-1;i>0;i--){const j=Math.random()*(i+1)|0;const t=a[i];a[i]=a[j];a[j]=t}},
-local(){for(let i=0;i<N;i++)a[i]=i;const R=100;for(let n=0;n<N;n++){const k=Math.random()*N|0,p=map[k],x=p%W,y=(p-x)/W;const qx=Math.min(W-1,Math.max(0,x+((Math.random()*(2*R+1)|0)-R))),qy=Math.min(H-1,Math.max(0,y+((Math.random()*(2*R+1)|0)-R)));const k2=inv[qy*W+qx];const t=a[k];a[k]=a[k2];a[k2]=t}},
+local(){for(let i=0;i<N;i++)a[i]=i;const R=Math.round(100*W/512);for(let n=0;n<N;n++){const k=Math.random()*N|0,p=map[k],x=p%W,y=(p-x)/W;const qx=Math.min(W-1,Math.max(0,x+((Math.random()*(2*R+1)|0)-R))),qy=Math.min(H-1,Math.max(0,y+((Math.random()*(2*R+1)|0)-R)));const k2=inv[qy*W+qx];const t=a[k];a[k]=a[k2];a[k2]=t}},
 flipv(){byPixel((x,y)=>(H-1-y)*W+x)},
 fliph(){byPixel((x,y)=>y*W+(W-1-x))},
 rot180(){byPixel((x,y)=>(H-1-y)*W+(W-1-x))},
-rot90(){if(W===H)byPixel((x,y)=>(W-1-x)*W+y);else{const T=128;byPixel((x,y)=>{const tx=x-x%T,ty=y-y%T,lx=x%T,ly=y%T;return(ty+(T-1-lx))*W+(tx+ly)})}},
+rot90(){if(W===H)byPixel((x,y)=>(W-1-x)*W+y);else{const T=W/4;byPixel((x,y)=>{const tx=x-x%T,ty=y-y%T,lx=x%T,ly=y%T;return(ty+(T-1-lx))*W+(tx+ly)})}},
 reverse(){for(let k=0;k<N;k++)a[k]=N-1-k},
 original(){for(let k=0;k<N;k++)a[k]=k}
 };
-function reset(){modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+$('mode').selectedOptions[0].text.toLowerCase()+', '+fmt(N)+' Pixel')}
-function setSize(h){H=h;N=W*H;alloc();loadSource();buildCurve();reset()}
+function reset(){modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+W+'×'+H+', '+$('mode').selectedOptions[0].text.toLowerCase())}
+function setSize(v){const[w,h]=v.split('x').map(Number);W=w;H=h;N=W*H;$('size').value=v;alloc();loadSource();buildCurve();reset()}
 function isNet(v){return v==='bitonic'||v==='oemerge'}
+function isQuad(v){return['insertion','selection','cycle','cocktail','oddeven','gnome','bubble'].includes(v)}
 function t(i){heat[i]=1}
 function sw(i,j){const x=a[i];a[i]=a[j];a[j]=x;wr+=2;heat[i]=1;heat[j]=1}
 function*bubble(){for(let i=0;i<N-1;i++){let s=false;for(let j=0;j<N-1-i;j++){cmp++;t(j);t(j+1);if(a[j]>a[j+1]){sw(j,j+1);s=true}yield}if(!s)return}}
@@ -192,10 +195,10 @@ function*merge(){const aux=new Uint32Array(N);for(let w=1;w<N;w*=2){for(let lo=0
 function*heap(){function*sift(s,e){let r=s;while(2*r+1<=e){let c=2*r+1,x=r;cmp++;t(c);if(a[x]<a[c])x=c;if(c+1<=e){cmp++;t(c+1);if(a[x]<a[c+1])x=c+1}if(x===r)return;sw(r,x);r=x;yield}}for(let s=(N-2)>>1;s>=0;s--)yield*sift(s,N-1);for(let e=N-1;e>0;e--){sw(0,e);yield;yield*sift(0,e-1)}}
 function*bitonic(){for(let k=2;k<=N;k<<=1)for(let j=k>>1;j>0;j>>=1)for(let i=0;i<N;i++){const l=i^j;if(l>i){cmp++;t(i);t(l);const up=(i&k)===0;if((up&&a[i]>a[l])||(!up&&a[i]<a[l]))sw(i,l);yield}}}
 function*oemerge(){for(let p=1;p<N;p<<=1)for(let k=p;k>=1;k>>=1)for(let j=k%p;j+k<N;j+=2*k)for(let i=0;i<k;i++){const x=i+j,y=i+j+k;if(y>=N)continue;if(Math.floor(x/(2*p))===Math.floor(y/(2*p))){cmp++;t(x);t(y);if(a[x]>a[y])sw(x,y);yield}}}
-function*lsd(bits){const aux=new Uint32Array(N),B=1<<bits,M=B-1;for(let sh=0;sh<18;sh+=bits){const cnt=new Uint32Array(B+1);for(let i=0;i<N;i++){cnt[((a[i]>>sh)&M)+1]++;t(i);if((i&15)===0)yield}for(let d=0;d<B;d++)cnt[d+1]+=cnt[d];for(let i=0;i<N;i++){const p=cnt[(a[i]>>sh)&M]++;aux[p]=a[i];wr++;t(p);if((i&3)===0)yield}for(let i=0;i<N;i++){a[i]=aux[i];if((i&15)===0){t(i);yield}}}}
+function*lsd(bits){const aux=new Uint32Array(N),B=1<<bits,M=B-1,top=Math.ceil(Math.log2(N));for(let sh=0;sh<top;sh+=bits){const cnt=new Uint32Array(B+1);for(let i=0;i<N;i++){cnt[((a[i]>>sh)&M)+1]++;t(i);if((i&15)===0)yield}for(let d=0;d<B;d++)cnt[d+1]+=cnt[d];for(let i=0;i<N;i++){const p=cnt[(a[i]>>sh)&M]++;aux[p]=a[i];wr++;t(p);if((i&3)===0)yield}for(let i=0;i<N;i++){a[i]=aux[i];if((i&15)===0){t(i);yield}}}}
 function*radix(){yield*lsd(8)}
 function*radix16(){yield*lsd(4)}
-function*radixmsd(){const st=[0,N-1,17];while(st.length){const bit=st.pop(),hi=st.pop(),lo=st.pop();if(lo>=hi||bit<0)continue;const m=1<<bit;let i=lo,j=hi;while(i<=j){while(i<=j&&!(a[i]&m)){t(i);i++;yield}while(i<=j&&(a[j]&m)){t(j);j--;yield}if(i<j){sw(i,j);i++;j--;yield}}st.push(lo,i-1,bit-1);st.push(i,hi,bit-1)}}
+function*radixmsd(){const st=[0,N-1,Math.ceil(Math.log2(N))-1];while(st.length){const bit=st.pop(),hi=st.pop(),lo=st.pop();if(lo>=hi||bit<0)continue;const m=1<<bit;let i=lo,j=hi;while(i<=j){while(i<=j&&!(a[i]&m)){t(i);i++;yield}while(i<=j&&(a[j]&m)){t(j);j--;yield}if(i<j){sw(i,j);i++;j--;yield}}st.push(lo,i-1,bit-1);st.push(i,hi,bit-1)}}
 function*counting(){const aux=new Uint32Array(N);for(let i=0;i<N;i++){aux[a[i]]=a[i];wr++;t(i);t(a[i]);yield}for(let i=0;i<N;i++){a[i]=aux[i];if((i&7)===0){t(i);yield}}}
 const algs={bubble,cocktail,oddeven,gnome,insertion,selection,cycle,shell,comb,quick,merge,heap,bitonic,oemerge,radix,radix16,radixmsd,counting};
 function render(){maxH=0;for(let k=0;k<N;k++){const c=cseq[a[k]],h=heat[k];if(h>0.02){const f=h*TRAIL,r=c&255,g=(c>>8)&255,b=(c>>16)&255;px[map[k]]=(255<<24)|((b+(255-b)*f)<<16)|((g+(255-g)*f)<<8)|(r+(255-r)*f);if(h>maxH)maxH=h}else px[map[k]]=c;heat[k]=h*decay}ctx.putImageData(img,0,0);$('scmp').textContent=fmt(cmp);$('swr').textContent=fmt(wr);$('stime').textContent=ftime(elapsed);$('srate').textContent=fmt(Math.round(rate))}
@@ -203,13 +206,13 @@ function fade(){if(!fading)return;render();if(maxH>0.02)requestAnimationFrame(fa
 function startFade(){if(!fading){fading=true;requestAnimationFrame(fade)}}
 function stat(s){$('stat').textContent=s}
 function setRun(r){running=r;$('go').textContent=r?'Pause':'Start'}
-function loop(){if(!running){startFade();return}const now=performance.now();elapsed+=now-lastT;lastT=now;if(!gen)gen=algs[$('alg').value]();let k=0;for(;k<ops;k++){if(gen.next().done){done=true;break}}steps+=k;rateSteps+=k;if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}render();if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}stat('Läuft: '+$('alg').selectedOptions[0].text+' auf '+$('curve').selectedOptions[0].text);requestAnimationFrame(loop)}
+function loop(){if(!running){startFade();return}const now=performance.now();elapsed+=now-lastT;lastT=now;if(!gen)gen=algs[$('alg').value]();let k=0;for(;k<ops;k++){if(gen.next().done){done=true;break}}steps+=k;rateSteps+=k;if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}render();if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}stat('Läuft: '+$('alg').selectedOptions[0].text+' auf '+$('curve').selectedOptions[0].text+', '+W+'×'+H);requestAnimationFrame(loop)}
 $('go').onclick=()=>{if(done)reset();setRun(!running);if(running){fading=false;lastT=performance.now();rateT=lastT;rateSteps=0;requestAnimationFrame(loop)}};
 $('shuf').onclick=reset;
 $('mode').onchange=reset;
-$('alg').onchange=()=>{gen=null;done=false;const v=$('alg').value;if(isNet(v)&&H!==512){$('size').value='512';setSize(512);stat('Auf 512×512 umgeschaltet – Sortiernetze brauchen 2ⁿ Elemente')}else if(!running)stat('Algorithmus gewechselt – Zurücksetzen empfohlen')};
+$('alg').onchange=()=>{gen=null;done=false;const v=$('alg').value;if(isNet(v)&&W!==H){setSize(W+'x'+W);stat('Auf '+W+'×'+W+' umgeschaltet – Sortiernetze brauchen 2ⁿ Elemente')}else if(isQuad(v)&&W===512){setSize('256x'+(H===512?256:192));stat('Auf '+W+'×'+H+' umgeschaltet – quadratische Laufzeit')}else if(!running)stat('Algorithmus gewechselt – Zurücksetzen empfohlen')};
 $('curve').onchange=()=>{buildCurve();reset()};
-$('size').onchange=()=>{const h=+$('size').value;if(h!==512&&isNet($('alg').value)){$('alg').value='quick'}setSize(h)};
+$('size').onchange=()=>{const v=$('size').value,[w,h]=v.split('x').map(Number);if(w!==h&&isNet($('alg').value))$('alg').value='quick';setSize(v)};
 $('ops').oninput=e=>{ops=Math.round(Math.pow(10,e.target.value/10));$('opsv').textContent=fmt(ops)};
 $('dec').oninput=e=>{decay=e.target.value/1000;$('decv').textContent=decay.toFixed(3).replace('.',',')};
 $('up').onclick=()=>$('file').click();
