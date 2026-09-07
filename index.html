@@ -4,55 +4,80 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pixel-Sort – Sortieralgorithmen auf Bildern</title>
+<link rel="preload" as="image" href="assets/parrot.jpg">
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100vh;
-    background: #1c1d21; color: #e6e4dd;
-    font: 15px/1.5 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-    display: flex; justify-content: center;
-  }
-  main { width: min(100%, 960px); padding: 20px 16px 48px; }
-  h1 { font-size: 20px; font-weight: 500; margin: 0 0 14px; letter-spacing: .01em; }
-  canvas {
-    width: 100%; height: auto; display: block;
-    background: #111; border: 1px solid #34363c;
-    image-rendering: pixelated;
-  }
-  .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
-  @media (min-width: 720px) { .panel { grid-template-columns: repeat(4, 1fr); } }
-  select, button {
-    width: 100%; height: 40px; padding: 0 12px;
-    font: inherit; color: #e6e4dd;
-    background: #25272d; border: 1px solid #40434b; border-radius: 6px;
-  }
-  button { cursor: pointer; }
-  button:hover { background: #2e3138; }
-  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #8fb4ff; outline-offset: 2px; }
-  .row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
-  .row label { min-width: 110px; color: #a8a69f; font-size: 14px; }
-  .row input[type=range] { flex: 1; accent-color: #8fb4ff; }
-  .row output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 16px 0 8px; }
-  @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-  .stat { background: #25272d; border-radius: 6px; padding: 10px 14px; }
-  .stat small { display: block; color: #a8a69f; font-size: 12px; }
-  .stat span { font-size: 22px; font-variant-numeric: tabular-nums; }
-  #stat { color: #a8a69f; font-size: 14px; }
-  .help { margin-top: 28px; color: #a8a69f; font-size: 14px; max-width: 70ch; }
+:root { color-scheme: dark; font: 16px/1.5 "Segoe UI", system-ui, sans-serif; color:#e6e4dd; background:#1c1d21; }
+* { box-sizing:border-box; }
+body { margin:0; }
+main { max-width:1280px; margin:auto; padding:20px 16px 40px; }
+h1 { font-size:1.25rem; font-weight:500; margin:0 0 18px; }
+h1 span { color:#aaa; font-size:.875rem; }
+.workspace { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:24px; align-items:start; }
+canvas { display:block; width:100%; height:auto; background:#111; border:1px solid #34363c; image-rendering:pixelated; }
+.panel, .actions, .fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+label { display:block; font-size:.875rem; color:#bcbcc5; min-width:0; }
+select, button, input[type=text] { width:100%; min-width:0; min-height:44px; padding:8px 10px; font:inherit; color:#e6e4dd; background:#25272d; border:1px solid #484b55; border-radius:7px; }
+label select, label input { margin-top:5px; }
+button { cursor:pointer; }
+button:hover { background:#343844; }
+button:disabled { cursor:not-allowed; opacity:.6; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline:2px solid #8fb4ff; outline-offset:3px; }
+.primary { background:#294878; border-color:#5a85c4; }
+.primary:hover { background:#355b93; }
+#surprise { grid-column:1/-1; background:#384034; border-color:#6c845e; }
+#surprise:hover { background:#46533f; }
+.actions { margin:0 0 16px; }
+.hint { font-size:.875rem; color:#bcbcc5; margin:10px 0; }
+#stat { min-height:3em; }
+#algHint { min-height:3em; }
+details { margin-top:16px; border-top:1px solid #3b3e47; padding-top:12px; }
+summary { cursor:pointer; font-size:.9375rem; }
+.fields { margin-top:12px; }
+.wide { grid-column:1/-1; }
+[hidden] { display:none !important; }
+.row { margin:14px 0; }
+.row label { display:flex; justify-content:space-between; gap:10px; }
+input[type=range] { width:100%; accent-color:#8fb4ff; min-height:28px; }
+output { color:#e6e4dd; font-variant-numeric:tabular-nums; }
+.stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.stat { background:#25272d; border-radius:7px; padding:9px 10px; overflow-wrap:anywhere; }
+.stat small { display:block; color:#bcbcc5; font-size:.75rem; }
+.stat span { font-size:clamp(1rem,2vw,1.35rem); font-variant-numeric:tabular-nums; }
+.help { color:#bcbcc5; font-size:.875rem; max-width:90ch; }
+@media(max-width:860px) { .workspace { grid-template-columns:1fr; gap:12px; } .controls { max-width:650px; width:100%; margin:auto; } .picture { max-width:650px; width:100%; margin:auto; } }
+@media(max-width:400px) { .panel,.fields { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 </style>
 </head>
 <body>
 <main>
-<h1>Pixel-Sort – Sortieralgorithmen auf Bildern <span style="color:#a8a69f;font-size:13px">v6</span></h1>
-<canvas id="cv" width="512" height="512"></canvas>
-
+<h1>Pixel-Sort – Sortieralgorithmen auf Bildern <span>v7</span></h1>
+<div class="workspace">
+<section class="picture" aria-label="Bild und Statistik">
+<canvas id="cv" width="512" height="512" aria-label="Visualisierung der Pixelsortierung"></canvas>
+<div class="stats">
+  <div class="stat"><small>Vergleiche</small><span id="scmp">0</span></div>
+  <div class="stat"><small>Schreibzugriffe</small><span id="swr">0</span></div>
+  <div class="stat"><small>Dauer</small><span id="stime">0:00,0</span></div>
+  <div class="stat"><small>Schritte / s</small><span id="srate">0</span></div>
+</div>
+<div id="stat" class="hint" role="status">Bereit</div>
+</section>
+<section class="controls" aria-label="Einstellungen">
+<div class="actions">
+<button id="go" class="primary">Start</button><button id="shuf" title="Mit demselben Seed und denselben Einstellungen zurücksetzen">Gleiche Mischung</button>
+<button id="newMix">Neu mischen</button><button id="up">Bild laden</button>
+<button id="surprise" title="Algorithmus, Bildpfad, Mischung und passende Größe zufällig wählen und starten">Zufallsstart</button>
+<input type="file" id="file" accept="image/*" hidden>
+</div>
 <div class="panel">
-  <select id="alg" aria-label="Algorithmus">
+<label>Algorithmus
+<select id="alg" aria-label="Algorithmus">
     <optgroup label="Teile und herrsche">
       <option value="quick">Quicksort</option>
       <option value="merge">Merge Sort</option>
+      <option value="natural">Natural Merge Sort</option>
+      <option value="tim">Timsort</option>
+      <option value="smooth">Smoothsort</option>
       <option value="heap">Heapsort</option>
       <option value="shell">Shellsort</option>
       <option value="comb">Comb Sort</option>
@@ -66,6 +91,7 @@
       <option value="radix16">Radix LSD (Basis 16)</option>
       <option value="radixmsd">Radix MSD (binär, in-place)</option>
       <option value="counting">Counting Sort</option>
+      <option value="american">American Flag Sort</option>
     </optgroup>
     <optgroup label="Quadratisch (→ 256er-Raster)">
       <option value="insertion">Insertion Sort</option>
@@ -75,9 +101,12 @@
       <option value="oddeven">Odd-Even Sort</option>
       <option value="gnome">Gnome Sort</option>
       <option value="bubble">Bubble Sort</option>
+      <option value="pancake">Pancake Sort</option>
     </optgroup>
   </select>
-  <select id="curve" aria-label="Kurve">
+</label>
+<label>Bildpfad
+<select id="curve" aria-label="Kurve">
     <optgroup label="Linear">
       <option value="row">Zeilen</option>
       <option value="snake">Schlange</option>
@@ -85,6 +114,11 @@
       <option value="col">Spalten</option>
       <option value="diag">Diagonal-Zickzack</option>
       <option value="spiral">Spirale</option>
+      <option value="rings">Konzentrische Ringe</option>
+      <option value="radar">Radar</option>
+      <option value="tiles">Kachelweise</option>
+      <option value="checker">Schachbrett</option>
+      <option value="bitreverse">Bit-Reversal</option>
     </optgroup>
     <optgroup label="Fraktal">
       <option value="hilbert">Hilbert</option>
@@ -93,10 +127,18 @@
       <option value="zorder">Z-Order (Morton)</option>
     </optgroup>
   </select>
-  <select id="mode" aria-label="Ausgangszustand">
+</label>
+<label>Ausgangszustand
+<select id="mode" aria-label="Ausgangszustand">
     <optgroup label="Zufällig">
       <option value="random">Komplett gemischt</option>
-      <option value="local">Lokal gemischt (≤ 100 px)</option>
+      <option value="local">Lokal gemischt</option>
+      <option value="few">Wenige Pixelpaare tauschen</option>
+      <option value="tileSwap">Kacheln vertauschen</option>
+      <option value="tileMix">Innerhalb von Kacheln mischen</option>
+      <option value="shifts">Zeilen / Spalten verschieben</option>
+      <option value="sections">Abschnitte umkehren</option>
+      <option value="blocks">Sortierte Blöcke vertauschen</option>
     </optgroup>
     <optgroup label="Geometrisch">
       <option value="flipv">Vertikal gespiegelt</option>
@@ -105,45 +147,57 @@
       <option value="rot180">180° gedreht</option>
       <option value="reverse">Array umgekehrt</option>
     </optgroup>
-    <optgroup label="Nach Helligkeit">
+    <optgroup label="Nach Farbe">
       <option value="bright">Hell → dunkel</option>
       <option value="dark">Dunkel → hell</option>
+      <option value="hue">Nach Farbton</option>
+      <option value="saturation">Nach Sättigung</option>
     </optgroup>
     <option value="original">Original (sortiert)</option>
   </select>
-  <select id="size" aria-label="Format">
-    <option value="256x256">256 × 256 (2¹⁶)</option>
-    <option value="512x512" selected>512 × 512 (2¹⁸)</option>
-    <option value="1024x1024">1024 × 1024 (2²⁰)</option>
-  </select>
-  <button id="up">Bild laden</button>
-  <button id="go">Start</button>
-  <button id="shuf">Zurücksetzen</button>
-  <input type="file" id="file" accept="image/*" hidden>
+</label>
+<label>Raster
+<select id="size"><option value="256x256">256 × 256</option><option value="512x512" selected>512 × 512</option><option value="1024x1024">1024 × 1024</option></select>
+</label>
 </div>
+<p id="algHint" class="hint"></p>
 
-<div class="row">
-  <label for="ops">Ops pro Frame</label>
-  <input type="range" id="ops" min="10" max="55" value="40" step="1">
-  <output id="opsv">10.000</output>
+<p id="modeHint" class="hint"></p>
+<div class="fields" id="mixOptions">
+<label id="tileField" hidden>Kachelgröße<select id="tileSize"><option value="16">16 × 16</option><option value="32" selected>32 × 32</option><option value="64">64 × 64</option></select></label>
+<label id="chunkField" hidden>Abschnittslänge<select id="chunkSize"><option value="64">64 Pixel</option><option value="256">256 Pixel</option><option value="1024" selected>1.024 Pixel</option><option value="4096">4.096 Pixel</option><option value="16384">16.384 Pixel</option></select></label>
+<label id="fewField" hidden>Beteiligte Pixel<select id="amount"><option value="1">1 %</option><option value="5" selected>5 %</option><option value="20">20 %</option><option value="50">50 %</option></select></label>
+<label id="localField" hidden>Tauschradius<select id="radius"><option value="5">5 Pixel</option><option value="20">20 Pixel</option><option value="50">50 Pixel</option><option value="100" selected>100 Pixel</option></select></label>
+<label id="axisField" hidden>Verschieberichtung<select id="axis"><option value="rows">Zeilen</option><option value="cols">Spalten</option></select></label>
+<label id="shiftField" hidden>Verschiebung<select id="shiftStyle"><option value="random">Zufällig</option><option value="wave">Sinuswelle</option></select></label>
+<label id="amplitudeField" hidden>Maximale Verschiebung<select id="amplitude"><option value="5">5 % der Bildbreite</option><option value="15" selected>15 % der Bildbreite</option><option value="35">35 % der Bildbreite</option></select></label>
+<label id="waveField" hidden>Wellen<select id="waves"><option value="1">1</option><option value="2" selected>2</option><option value="4">4</option></select></label>
+<label id="checkerField" hidden>Schachbrett-Felder<select id="checkerSize"><option value="1">Einzelne Pixel</option><option value="8" selected>8 × 8</option><option value="16">16 × 16</option><option value="32">32 × 32</option></select></label>
+<label id="outerField" hidden>Kacheln durchlaufen<select id="tileOuter"><option value="snake">Schlange</option><option value="hilbert">Hilbert</option></select></label>
+<label id="innerField" hidden>Innerhalb der Kachel<select id="tileInner"><option value="snake">Schlange</option><option value="hilbert" selected>Hilbert</option></select></label>
 </div>
-<div class="row">
-  <label for="dec">Spur (Decay)</label>
-  <input type="range" id="dec" min="900" max="995" value="960" step="1">
-  <output id="decv">0,960</output>
+<div class="row"><label for="ops">Tempo <output id="opsv">10.000</output></label><input type="range" id="ops" min="10" max="55" value="40" step="1" aria-describedby="tempoHint"></div>
+<div class="row"><label for="dec">Leuchtspur <output id="decv">0,960</output></label><input type="range" id="dec" min="900" max="995" value="960" step="1"></div>
+<details><summary>Bildpfad variieren</summary>
+<div class="fields">
+<label>Start im Pfad<select id="pathStart"><option value="0">Anfang</option><option value="25">Bei 25 %</option><option value="50">Bei 50 %</option><option value="75">Bei 75 %</option></select></label>
+<label>Laufrichtung<select id="pathDirection"><option value="forward">Vorwärts</option><option value="backward">Rückwärts</option></select></label>
+<label>Ausrichtung<select id="pathRotation"><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label>
+<label>Spiegelung<select id="pathMirror"><option value="none">Keine</option><option value="x">Horizontal</option><option value="y">Vertikal</option><option value="both">Beide Achsen</option></select></label>
 </div>
-
-<div class="stats">
-  <div class="stat"><small>Vergleiche</small><span id="scmp">0</span></div>
-  <div class="stat"><small>Schreibzugriffe</small><span id="swr">0</span></div>
-  <div class="stat"><small>Dauer</small><span id="stime">0:00,0</span></div>
-  <div class="stat"><small>Schritte / s</small><span id="srate">0</span></div>
+</details>
+<details><summary>Mischung reproduzieren</summary>
+<div class="fields"><label class="wide">Zufalls-Seed<input id="seed" type="text" value="pixelsort" maxlength="80" spellcheck="false" autocomplete="off"></label></div>
+<p class="hint">Gleiches Bild, Raster, Bildpfad, Mischung und Seed ergeben denselben Ausgangszustand. Der Algorithmus kann zum Vergleichen gewechselt werden.</p>
+</details>
+</section>
 </div>
-<div id="stat">Bereit</div>
-
-<p class="help">Das Bild wird entlang der gewählten Kurve zu einem 1D-Array aufgerollt, in den gewählten Ausgangszustand gebracht und vom Algorithmus zurücksortiert. Jeder Pixel trägt seinen Originalindex als Sortierschlüssel; als Ausgangszustand lassen sich die Pixel auch nach Helligkeit entlang der Kurve aufreihen. Zuletzt berührte Pixel werden weiß überlagert und verblassen mit dem eingestellten Decay. Bei einem Algorithmuswechsel wird der Ausgangszustand wiederhergestellt. Die 90°-Drehung dreht das gesamte Bild. Die Ops-Skala ist logarithmisch. Verfahren mit quadratischer Laufzeit sind auf 256 × 256 begrenzt; die übrigen Verfahren unterstützen auch 512 × 512 und 1024 × 1024.</p>
+<details class="help"><summary>So funktioniert es</summary>
+<p>Jeder Pixel behält seinen Originalindex. Der Bildpfad legt fest, in welcher Reihenfolge die Positionen durchlaufen werden. Der Algorithmus sortiert die vermischten Pixel zurück zum Original. Leuchtspuren zeigen die zuletzt berührten Positionen.</p>
+<p>Ein Wechsel der Einstellungen stoppt den Lauf und stellt den Ausgangszustand wieder her. „Gleiche Mischung“ wiederholt ihn, „Neu mischen“ erzeugt einen neuen Seed. „Zufallsstart“ wählt eine neue Kombination inklusive der Detailoptionen; dein geladenes Bild bleibt erhalten.</p>
+<p id="tempoHint">Das Tempo begrenzt die Schritte pro Bildaktualisierung. Bei aufwendigen Berechnungen arbeitet die Anwendung in kürzeren Etappen, damit Pause und andere Bedienelemente erreichbar bleiben. Langsame quadratische Verfahren sind auf 256 × 256 begrenzt.</p>
+</details>
 </main>
-
 <script>
 const TRAIL=0.5;
 let W=512,H=512,N=W*H;
@@ -154,13 +208,120 @@ const fmt=n=>n.toLocaleString('de-DE');
 const $=id=>document.getElementById(id);
 function ftime(ms){const s=ms/1000,m=Math.floor(s/60),r=s-m*60;return m+':'+(r<10?'0':'')+r.toFixed(1).replace('.',',')}
 function alloc(){cv.width=W;cv.height=H;img=ctx.createImageData(W,H);px=new Uint32Array(img.data.buffer);colors=new Uint32Array(N);cseq=new Uint32Array(N);lum=new Uint8Array(N);map=new Uint32Array(N);inv=new Uint32Array(N);a=new Uint32Array(N);heat=new Float32Array(N)}
-function hsl(h,s,l){const c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r,g,b;if(h<60){r=c;g=x;b=0}else if(h<120){r=x;g=c;b=0}else if(h<180){r=0;g=c;b=x}else if(h<240){r=0;g=x;b=c}else if(h<300){r=x;g=0;b=c}else{r=c;g=0;b=x}return[(r+m)*255|0,(g+m)*255|0,(b+m)*255|0]}
-function genImage(){const sc=W/512;for(let y=0;y<H;y++)for(let x=0;x<W;x++){const dx=x-W/2,dy=y-H/2,d=Math.sqrt(dx*dx+dy*dy);let h=(x/W*360+y/H*60)%360,l=0.35+0.4*(1-y/H);if(Math.floor(d/(40*sc))%2===0)l*=0.7;if(Math.abs(dx-dy*W/H)<14*sc)l=0.92;const[r,g,b]=hsl(h,0.85,l);colors[y*W+x]=(255<<24)|(b<<16)|(g<<8)|r}}
 function fromImage(im){const oc=document.createElement('canvas');oc.width=W;oc.height=H;const o=oc.getContext('2d');const s=Math.max(W/im.width,H/im.height),w=im.width*s,h=im.height*s;o.drawImage(im,(W-w)/2,(H-h)/2,w,h);colors.set(new Uint32Array(o.getImageData(0,0,W,H).data.buffer))}
-function loadSource(){if(srcImg)fromImage(srcImg);else genImage()}
+function loadSource(){if(srcImg)fromImage(srcImg);else colors.fill(0xff111111)}
 function emit(x,y){x=Math.floor(x);y=Math.floor(y);if(x>=0&&x<W&&y>=0&&y<H)map[mk++]=y*W+x}
 function hil(x0,y0,xi,xj,yi,yj,n){if(n<=0){emit(x0+(xi+yi)/2,y0+(xj+yj)/2);return}hil(x0,y0,yi/2,yj/2,xi/2,xj/2,n-1);hil(x0+xi/2,y0+xj/2,xi/2,xj/2,yi/2,yj/2,n-1);hil(x0+xi/2+yi/2,y0+xj/2+yj/2,xi/2,xj/2,yi/2,yj/2,n-1);hil(x0+xi/2+yi,y0+xj/2+yj,-yi/2,-yj/2,-xi/2,-xj/2,n-1)}
+// All random scrambles use a fresh generator derived only from the visible seed.
+function seededRandom(seed) {
+  let state=2166136261;
+  for(const ch of seed)state=Math.imul(state^ch.codePointAt(0),16777619);
+  return ()=>{state=(state+0x6d2b79f5)|0;let z=state;z=Math.imul(z^(z>>>15),z|1);z^=z+Math.imul(z^(z>>>7),z|61);return((z^(z>>>14))>>>0)/4294967296};
+}
+let rng=seededRandom('pixelsort');
+function newSeed(){const values=new Uint32Array(2);crypto.getRandomValues(values);return Array.from(values,n=>n.toString(36)).join('-')}
+function shuffle(values) {
+  for(let i=values.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[values[i],values[j]]=[values[j],values[i]]}
+}
+function identity(){for(let i=0;i<N;i++)a[i]=i}
+function shuffledBlocks(count) {
+  const order=Uint32Array.from({length:count},(_,i)=>i);shuffle(order);
+  if(count>1&&order.every((v,i)=>v===i))[order[0],order[1]]=[order[1],order[0]];
+  return order;
+}
+function squareOrder(side,kind) {
+  const order=new Uint32Array(side*side);
+  for(let d=0;d<order.length;d++){
+    if(kind==='snake'){const y=Math.floor(d/side);order[d]=y*side+((y&1)?side-1-d%side:d%side);continue}
+    let x=0,y=0,t=d;
+    for(let s=1;s<side;s*=2){const rx=1&(t>>1),ry=1&(t^rx);if(ry===0){if(rx===1){x=s-1-x;y=s-1-y}[x,y]=[y,x]}x+=s*rx;y+=s*ry;t>>=2}
+    order[d]=y*side+x;
+  }
+  return order;
+}
+function polarOrder(radialFirst) {
+  const keys=new Float64Array(N),sectors=W*4,c=(W-1)/2;
+  for(let p=0;p<N;p++){
+    const dx=p%W-c,dy=Math.floor(p/W)-c;
+    const radius=Math.hypot(dx,dy),angle=(Math.atan2(dy,dx)+2*Math.PI)%(2*Math.PI);
+    keys[p]=radialFirst?Math.floor(radius)*sectors+angle/(2*Math.PI)*sectors:Math.floor(angle/(2*Math.PI)*sectors)*(W*2)+radius;
+    map[p]=p;
+  }
+  map.sort((a,b)=>keys[a]-keys[b]||a-b);
+}
+function tileTraversal() {
+  const side=+$('tileSize').value,across=W/side;
+  const outer=squareOrder(across,$('tileOuter').value),inner=squareOrder(side,$('tileInner').value);
+  let k=0;
+  for(const tile of outer){const ox=(tile%across)*side,oy=Math.floor(tile/across)*side;for(const p of inner)map[k++]=(oy+Math.floor(p/side))*W+ox+p%side}
+}
+function checkerTraversal() {
+  const side=+$('checkerSize').value;let k=0;
+  for(let parity=0;parity<2;parity++)for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(((Math.floor(x/side)+Math.floor(y/side))&1)===parity)map[k++]=y*W+x;
+}
+function reverseBitsTraversal() {
+  const bits=Math.log2(N);
+  for(let i=0;i<N;i++){let x=i,r=0;for(let j=0;j<bits;j++){r=(r<<1)|(x&1);x>>>=1}map[i]=r}
+}
+function transformPath() {
+  const rotation=+$('pathRotation').value,mirror=$('pathMirror').value;
+  if(rotation||mirror!=='none')for(let i=0;i<N;i++){
+    let x=map[i]%W,y=Math.floor(map[i]/W);
+    for(let r=0;r<rotation;r+=90)[x,y]=[W-1-y,x];
+    if(mirror==='x'||mirror==='both')x=W-1-x;
+    if(mirror==='y'||mirror==='both')y=H-1-y;
+    map[i]=y*W+x;
+  }
+  const start=Math.floor(N*+$('pathStart').value/100),backward=$('pathDirection').value==='backward';
+  if(start||backward){const base=map.slice();for(let i=0;i<N;i++)map[i]=base[(start+(backward?-i:i)+N)%N]}
+}
+function scrambleTiles(mixInside) {
+  const side=+$('tileSize').value,across=W/side,order=shuffledBlocks(across*across);
+  if(mixInside){
+    identity();
+    const positions=new Uint32Array(side*side);
+    for(let ty=0;ty<H;ty+=side)for(let tx=0;tx<W;tx+=side){
+      let i=0;for(let y=0;y<side;y++)for(let x=0;x<side;x++)positions[i++]=inv[(ty+y)*W+tx+x];
+      for(let j=positions.length-1;j>0;j--){const k=Math.floor(rng()*(j+1)),p=positions[j],q=positions[k];[a[p],a[q]]=[a[q],a[p]]}
+    }
+  }else byPixel((x,y)=>{const tile=order[Math.floor(y/side)*across+Math.floor(x/side)];return(Math.floor(tile/across)*side+y%side)*W+(tile%across)*side+x%side});
+}
+function scrambleFew() {
+  identity();const positions=a.slice(),count=2*Math.floor(N*+$('amount').value/200);
+  for(let i=0;i<count;i++){const j=i+Math.floor(rng()*(N-i));[positions[i],positions[j]]=[positions[j],positions[i]]}
+  for(let i=0;i<count;i+=2){const p=positions[i],q=positions[i+1];[a[p],a[q]]=[a[q],a[p]]}
+}
+function scrambleShifts() {
+  const row=$('axis').value==='rows',wave=$('shiftStyle').value==='wave',amp=Math.max(1,Math.round(W*+$('amplitude').value/100)),phase=rng()*2*Math.PI;
+  const offsets=Int32Array.from({length:W},(_,i)=>wave?Math.round(amp*Math.sin(i/W*2*Math.PI*+$('waves').value+phase)):Math.floor(rng()*(2*amp+1))-amp);
+  if(offsets.every(v=>v===0))offsets[0]=1;
+  byPixel((x,y)=>row?y*W+(x+offsets[y]+W)%W:((y+offsets[x]+H)%H)*W+x);
+}
+function scrambleSections() {
+  identity();const side=+$('chunkSize').value;
+  for(let lo=0;lo<N;lo+=side)if(lo===0||rng()<0.5){let l=lo,r=Math.min(N,lo+side)-1;while(l<r){[a[l],a[r]]=[a[r],a[l]];l++;r--}}
+}
+function scrambleBlocks() {
+  const side=Math.min(N,+$('chunkSize').value),order=shuffledBlocks(N/side);
+  for(let i=0;i<N;i++)a[i]=order[Math.floor(i/side)]*side+i%side;
+}
+function colorOrder(hue) {
+  const keys=new Float64Array(N);identity();
+  for(let i=0;i<N;i++){
+    const c=cseq[i],r=(c&255)/255,g=((c>>>8)&255)/255,b=((c>>>16)&255)/255;
+    const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+    let h=1;if(d){h=(max===r?(g-b)/d+(g<b?6:0):max===g?(b-r)/d+2:(r-g)/d+4)/6}
+    keys[i]=hue?h:(max===0?0:d/max);
+  }
+  a.sort((p,q)=>keys[p]-keys[q]||lum[p]-lum[q]||p-q);
+}
+
 const curves={
+rings(){polarOrder(true)},
+radar(){polarOrder(false)},
+tiles:tileTraversal,
+checker:checkerTraversal,
+bitreverse:reverseBitsTraversal,
 row(){for(let k=0;k<N;k++)map[k]=k},
 col(){let k=0;for(let x=0;x<W;x++)for(let y=0;y<H;y++)map[k++]=y*W+x},
 snake(){let k=0;for(let y=0;y<H;y++){if(y&1)for(let x=W-1;x>=0;x--)map[k++]=y*W+x;else for(let x=0;x<W;x++)map[k++]=y*W+x}},
@@ -172,12 +333,20 @@ moore(){mk=0;const h=W/2,o=Math.log2(h);hil(h,0,0,h,-h,0,o);hil(h,h,0,h,-h,0,o);
 peano(){mk=0;const D=2*Math.ceil(Math.log(Math.max(W,H))/Math.log(3)),S=Math.pow(3,D/2);for(let d=0;d<S*S;d++){let t=d;const dg=new Array(D);for(let i=D-1;i>=0;i--){dg[i]=t%3;t=(t-dg[i])/3}let x=0,y=0,sx=0,sy=0;for(let i=0;i<D/2;i++){let xd=dg[2*i],yd=dg[2*i+1];if(sy&1)xd=2-xd;sy+=yd;sx+=xd;if((sx-xd)&1)yd=2-yd;x=x*3+xd;y=y*3+yd}emit(x,y)}},
 zorder(){mk=0;const B=Math.log2(W);for(let d=0;d<W*W;d++){let x=0,y=0;for(let b=0;b<B;b++){x|=((d>>(2*b))&1)<<b;y|=((d>>(2*b+1))&1)<<b}emit(x,y)}}
 };
-function buildCurve(){curves[$('curve').value]();for(let k=0;k<N;k++){const c=colors[map[k]];cseq[k]=c;inv[map[k]]=k;lum[k]=(0.299*(c&255)+0.587*((c>>8)&255)+0.114*((c>>16)&255))|0}}
+function buildCurve(){curves[$('curve').value]();transformPath();for(let k=0;k<N;k++){const c=colors[map[k]];cseq[k]=c;inv[map[k]]=k;lum[k]=(0.299*(c&255)+0.587*((c>>8)&255)+0.114*((c>>16)&255))|0}}
 function byLum(desc){const cnt=new Uint32Array(257);for(let k=0;k<N;k++)cnt[lum[k]+1]++;for(let l=0;l<256;l++)cnt[l+1]+=cnt[l];for(let k=0;k<N;k++){const p=cnt[lum[k]]++;a[desc?N-1-p:p]=k}}
 function byPixel(src){for(let k=0;k<N;k++){const p=map[k],x=p%W,y=(p-x)/W;a[k]=inv[src(x,y)]}}
 const modes={
-random(){for(let i=0;i<N;i++)a[i]=i;for(let i=N-1;i>0;i--){const j=Math.random()*(i+1)|0;const t=a[i];a[i]=a[j];a[j]=t}},
-local(){for(let i=0;i<N;i++)a[i]=i;const R=Math.round(100*W/512);for(let n=0;n<N;n++){const k=Math.random()*N|0,p=map[k],x=p%W,y=(p-x)/W;const qx=Math.min(W-1,Math.max(0,x+((Math.random()*(2*R+1)|0)-R))),qy=Math.min(H-1,Math.max(0,y+((Math.random()*(2*R+1)|0)-R)));const k2=inv[qy*W+qx];const t=a[k];a[k]=a[k2];a[k2]=t}},
+few:scrambleFew,
+tileSwap(){scrambleTiles(false)},
+tileMix(){scrambleTiles(true)},
+shifts:scrambleShifts,
+sections:scrambleSections,
+blocks:scrambleBlocks,
+hue(){colorOrder(true)},
+saturation(){colorOrder(false)},
+random(){for(let i=0;i<N;i++)a[i]=i;for(let i=N-1;i>0;i--){const j=rng()*(i+1)|0;const t=a[i];a[i]=a[j];a[j]=t}},
+local(){for(let i=0;i<N;i++)a[i]=i;const R=+$('radius').value;for(let n=0;n<N;n++){const k=rng()*N|0,p=map[k],x=p%W,y=(p-x)/W;const qx=Math.min(W-1,Math.max(0,x+((rng()*(2*R+1)|0)-R))),qy=Math.min(H-1,Math.max(0,y+((rng()*(2*R+1)|0)-R)));const k2=inv[qy*W+qx];const t=a[k];a[k]=a[k2];a[k2]=t}},
 flipv(){byPixel((x,y)=>(H-1-y)*W+x)},
 fliph(){byPixel((x,y)=>y*W+(W-1-x))},
 rot180(){byPixel((x,y)=>(H-1-y)*W+(W-1-x))},
@@ -187,9 +356,9 @@ bright(){byLum(true)},
 dark(){byLum(false)},
 original(){for(let k=0;k<N;k++)a[k]=k}
 };
-function reset(){cancelAnimationFrame(frame);frame=null;modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+W+'×'+H+', '+$('mode').selectedOptions[0].text.toLowerCase())}
-function setSize(v){if(isQuad($('alg').value))v='256x256';const[w,h]=v.split('x').map(Number);W=w;H=h;N=W*H;$('size').value=v;alloc();loadSource();buildCurve();reset()}
-function isQuad(v){return['insertion','selection','cycle','cocktail','oddeven','gnome','bubble'].includes(v)}
+function reset(){cancelAnimationFrame(frame);frame=null;rng=seededRandom($('seed').value);modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+W+'×'+H+', '+$('mode').selectedOptions[0].text.toLowerCase())}
+function setSize(v){if(!['256x256','512x512','1024x1024'].includes(v))v='512x512';if(isQuad($('alg').value))v='256x256';const[w,h]=v.split('x').map(Number);W=w;H=h;N=W*H;$('size').value=v;alloc();loadSource();buildCurve();reset()}
+function isQuad(v){return['insertion','selection','cycle','cocktail','oddeven','gnome','bubble','pancake'].includes(v)}
 function t(i){heat[i]=1}
 function sw(i,j){const x=a[i];a[i]=a[j];a[j]=x;wr+=2;heat[i]=1;heat[j]=1}
 function*bubble(){for(let i=0;i<N-1;i++){let s=false;for(let j=0;j<N-1-i;j++){cmp++;t(j);t(j+1);if(a[j]>a[j+1]){sw(j,j+1);s=true}yield}if(!s)return}}
@@ -212,25 +381,220 @@ function*radix(){yield*lsd(8)}
 function*radix16(){yield*lsd(4)}
 function*radixmsd(){const st=[0,N-1,Math.ceil(Math.log2(N))-1];while(st.length){const bit=st.pop(),hi=st.pop(),lo=st.pop();if(lo>=hi||bit<0)continue;const m=1<<bit;let i=lo,j=hi;while(i<=j){while(i<=j&&!(a[i]&m)){t(i);i++;yield}while(i<=j&&(a[j]&m)){t(j);j--;yield}if(i<j){sw(i,j);i++;j--;yield}}st.push(lo,i-1,bit-1);st.push(i,hi,bit-1)}}
 function*counting(){const aux=new Uint32Array(N);for(let i=0;i<N;i++){aux[a[i]]=a[i];wr++;t(i);t(a[i]);yield}for(let i=0;i<N;i++){a[i]=aux[i];if((i&7)===0){t(i);yield}}}
-const algs={bubble,cocktail,oddeven,gnome,insertion,selection,cycle,shell,comb,quick,merge,heap,bitonic,oemerge,radix,radix16,radixmsd,counting};
+// Natural runs are shared by Natural Merge Sort and the Timsort variant.
+function* findRun(lo) {
+  let hi=lo+1;if(hi>=N)return hi;
+  cmp++;t(lo);t(hi);const down=a[hi]<a[lo];yield;hi++;
+  while(hi<N){cmp++;t(hi-1);t(hi);const continues=down?a[hi]<a[hi-1]:a[hi]>=a[hi-1];yield;if(!continues)break;hi++}
+  if(down)for(let l=lo,r=hi-1;l<r;l++,r--){sw(l,r);yield}
+  return hi;
+}
+function* gallopBound(buffer,lo,hi,key,inclusive) {
+  const begin=lo;let jump=1;
+  while(lo<hi){const p=Math.min(hi-1,begin+jump-1);cmp++;const before=inclusive?buffer[p]<=key:buffer[p]<key;yield;if(!before){hi=p+1;break}lo=p+1;jump*=2}
+  while(lo<hi){const mid=(lo+hi)>>>1;cmp++;const before=inclusive?buffer[mid]<=key:buffer[mid]<key;yield;if(before)lo=mid+1;else hi=mid}
+  return lo;
+}
+function* mergeRuns(lo,mid,hi,buffer,galloping=false) {
+  cmp++;t(mid-1);t(mid);const ordered=a[mid-1]<=a[mid];yield;if(ordered)return;
+  for(let k=lo;k<hi;k++){buffer[k]=a[k];wr++;t(k);yield}
+  let i=lo,j=mid,k=lo,leftWins=0,rightWins=0;
+  while(i<mid&&j<hi){
+    cmp++;if(buffer[i]<=buffer[j]){a[k]=buffer[i++];leftWins++;rightWins=0}else{a[k]=buffer[j++];rightWins++;leftWins=0}wr++;t(k++);yield;
+    if(galloping&&leftWins>=7&&i<mid&&j<hi){const end=yield* gallopBound(buffer,i,mid,buffer[j],true);while(i<end){a[k]=buffer[i++];wr++;t(k++);yield}leftWins=0}
+    if(galloping&&rightWins>=7&&i<mid&&j<hi){const end=yield* gallopBound(buffer,j,hi,buffer[i],false);while(j<end){a[k]=buffer[j++];wr++;t(k++);yield}rightWins=0}
+  }
+  while(i<mid){a[k]=buffer[i++];wr++;t(k++);yield}
+  while(j<hi){a[k]=buffer[j++];wr++;t(k++);yield}
+}
+function* natural() {
+  let runs=[];const buffer=new Uint32Array(N);
+  for(let lo=0;lo<N;){const hi=yield* findRun(lo);runs.push([lo,hi]);lo=hi}
+  while(runs.length>1){const next=[];for(let i=0;i<runs.length;i+=2){const left=runs[i],right=runs[i+1];if(right){yield* mergeRuns(left[0],left[1],right[1],buffer);next.push([left[0],right[1]])}else next.push(left)}runs=next}
+}
+function* tim() {
+  const buffer=new Uint32Array(N),runs=[];
+  let minRun=N,remainder=0;while(minRun>=64){remainder|=minRun&1;minRun>>>=1}minRun+=remainder;
+  function* mergeAt(i){const left=runs[i],right=runs[i+1];yield* mergeRuns(left[0],left[1],right[1],buffer,true);runs.splice(i,2,[left[0],right[1]])}
+  const length=i=>runs[i][1]-runs[i][0];
+  for(let lo=0;lo<N;){
+    let hi=yield* findRun(lo);const end=Math.min(N,Math.max(hi,lo+minRun));
+    for(let i=hi;i<end;i++){
+      const value=a[i];let l=lo,r=i;
+      while(l<r){const m=(l+r)>>>1;cmp++;t(m);yield;if(value<a[m])r=m;else l=m+1}
+      for(let j=i;j>l;j--){a[j]=a[j-1];wr++;t(j);yield}a[l]=value;wr++;t(l);yield;
+    }
+    hi=end;runs.push([lo,hi]);lo=hi;
+    // Check both top triples, including the fourth run, before merging.
+    while(runs.length>1){let i=runs.length-2;if((i>0&&length(i-1)<=length(i)+length(i+1))||(i>1&&length(i-2)<=length(i-1)+length(i))){if(i>0&&length(i-1)<length(i+1))i--}else if(length(i)>length(i+1))break;yield* mergeAt(i)}
+  }
+  while(runs.length>1){let i=runs.length-2;if(i>0&&length(i-1)<length(i+1))i--;yield* mergeAt(i)}
+}
+function* american() {
+  if(N<2)return;
+  const stack=[[0,N,8*Math.floor(Math.log2(N-1)/8)]];
+  while(stack.length){
+    const[lo,hi,shift]=stack.pop();if(hi-lo<2||shift<0)continue;
+    const count=new Uint32Array(256),start=new Uint32Array(257);
+    for(let i=lo;i<hi;i++){count[(a[i]>>>shift)&255]++;t(i);yield}
+    start[0]=lo;for(let d=0;d<256;d++){start[d+1]=start[d]+count[d];yield}
+    const next=start.slice(0,256);
+    for(let bucket=0;bucket<256;bucket++){
+      while(next[bucket]<start[bucket+1]){
+        const i=next[bucket],dest=(a[i]>>>shift)&255;t(i);
+        if(dest===bucket)next[bucket]++;else{sw(i,next[dest]);next[dest]++}yield;
+      }
+      if(shift>0&&count[bucket]>1)stack.push([start[bucket],start[bucket+1],shift-8]);
+    }
+  }
+}
+function* pancake() {
+  function* flip(end){for(let i=0;i<end;i++,end--){sw(i,end);yield}}
+  for(let end=N-1;end>0;end--){let max=0;for(let i=1;i<=end;i++){cmp++;t(i);t(max);if(a[i]>a[max])max=i;yield}if(max===end)continue;if(max>0)yield* flip(max);yield* flip(end)}
+}
+// Leonardo-heap smoothsort, following the invariants in Dijkstra's EWD796a:
+// https://www.cs.utexas.edu/~EWD/transcriptions/EWD07xx/EWD796a.html
+function* smooth() {
+  if(N<2)return;
+  let q=1,root=0,shape=1,size=1,previous=1;
+  function up(){[size,previous]=[size+previous+1,size]}
+  function down(){[size,previous]=[previous,size-previous-1]}
+  function* sift(r,b,c){
+    while(b>=3){let child=r-b+c;cmp++;t(child);t(r-1);const right=a[child]<a[r-1];yield;if(right){child=r-1;[b,c]=[c,b-c-1]}
+      cmp++;t(r);t(child);const ordered=a[r]>=a[child];yield;if(ordered)break;sw(r,child);r=child;[b,c]=[c,b-c-1];yield;
+    }
+  }
+  function* trinkle(r){
+    let p=shape,b=size,c=previous;
+    while(p>0){
+      while(p%2===0){p/=2;[b,c]=[b+c+1,b]}
+      const stepson=r-b;if(p===1)break;
+      cmp++;t(stepson);t(r);const ordered=a[stepson]<=a[r];yield;if(ordered)break;p--;
+      if(b===1){sw(r,stepson);r=stepson;yield}
+      else{
+        let child=r-b+c;cmp++;t(child);t(r-1);const right=a[child]<a[r-1];yield;
+        if(right){child=r-1;[b,c]=[c,b-c-1];p*=2}
+        cmp++;t(stepson);t(child);const takeStep=a[stepson]>=a[child];yield;
+        if(takeStep){sw(r,stepson);r=stepson}else{sw(r,child);r=child;[b,c]=[c,b-c-1];p=0}yield;
+      }
+    }
+    yield* sift(r,b,c);
+  }
+  function* semitrinkle(){const other=root-previous;cmp++;t(other);t(root);const move=a[other]>a[root];yield;if(move){sw(root,other);yield;yield* trinkle(other)}}
+  while(q<N){
+    if(shape%8===3){yield* sift(root,size,previous);shape=(shape+1)/4;up();up()}
+    else{if(q+previous<N)yield* sift(root,size,previous);else yield* trinkle(root);down();shape*=2;while(size!==1){down();shape*=2}shape++}
+    q++;root++;yield;
+  }
+  yield* trinkle(root);
+  while(q>1){q--;
+    if(size===1){root--;shape--;while(shape%2===0){shape/=2;up()}}
+    else{shape--;root=root-size+previous;if(shape>0)yield* semitrinkle();down();shape=2*shape+1;root+=previous;yield* semitrinkle();down();shape=2*shape+1}yield;
+  }
+}
+
+const algs={natural,tim,american,smooth,pancake,bubble,cocktail,oddeven,gnome,insertion,selection,cycle,shell,comb,quick,merge,heap,bitonic,oemerge,radix,radix16,radixmsd,counting};
 function render(){maxH=0;for(let k=0;k<N;k++){const c=cseq[a[k]],h=heat[k];if(h>0.02){const f=h*TRAIL,r=c&255,g=(c>>8)&255,b=(c>>16)&255;px[map[k]]=(255<<24)|((b+(255-b)*f)<<16)|((g+(255-g)*f)<<8)|(r+(255-r)*f);if(h>maxH)maxH=h}else px[map[k]]=c;heat[k]=h*decay}ctx.putImageData(img,0,0);$('scmp').textContent=fmt(cmp);$('swr').textContent=fmt(wr);$('stime').textContent=ftime(elapsed);$('srate').textContent=fmt(Math.round(rate))}
 function fade(){if(!fading)return;render();if(maxH>0.02)frame=requestAnimationFrame(fade);else fading=false}
 function startFade(){if(!fading){fading=true;frame=requestAnimationFrame(fade)}}
 function stat(s){$('stat').textContent=s}
-function setRun(r){running=r;$('go').textContent=r?'Pause':'Start'}
-function loop(){if(!running){startFade();return}const now=performance.now();elapsed+=now-lastT;lastT=now;if(!gen)gen=algs[$('alg').value]();let k=0;for(;k<ops;k++){if(gen.next().done){done=true;break}}steps+=k;rateSteps+=k;if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}render();if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}stat('Läuft: '+$('alg').selectedOptions[0].text+' auf '+$('curve').selectedOptions[0].text+', '+W+'×'+H);frame=requestAnimationFrame(loop)}
-$('go').onclick=()=>{cancelAnimationFrame(frame);frame=null;if(done)reset();setRun(!running);if(running){fading=false;lastT=performance.now();rateT=lastT;rateSteps=0;frame=requestAnimationFrame(loop)}else startFade()};
-$('shuf').onclick=reset;
-$('mode').onchange=reset;
+function setRun(r){running=r;$('go').textContent=r?'Pause':done?'Erneut starten':gen?'Fortsetzen':'Start'}
+function loop(){
+  if(!running)return;
+  const begin=performance.now();if(!gen)gen=algs[$('alg').value]();let k=0;
+  for(;k<ops;k++){
+    if(gen.next().done){done=true;break}
+    if((k&255)===255&&performance.now()-begin>=8){k++;break}
+  }
+  const now=performance.now();elapsed+=now-lastT;lastT=now;steps+=k;rateSteps+=k;
+  if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}
+  render();
+  if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}
+  frame=requestAnimationFrame(loop);
+}
 function updateSizes(){const quad=isQuad($('alg').value);for(const option of $('size').options)option.disabled=quad&&option.value!=='256x256'}
-$('alg').onchange=()=>{updateSizes();if(isQuad($('alg').value)&&W>256){setSize('256x256');stat('Auf '+W+'×'+H+' umgeschaltet – quadratische Laufzeit')}else{reset();stat('Algorithmus gewechselt – Ausgangszustand wiederhergestellt')}};
-$('curve').onchange=()=>{buildCurve();reset()};
-$('size').onchange=()=>setSize($('size').value);
+const algorithmHelp={
+  quick:'Quicksort teilt den Wertebereich um einen Pivot auf.',merge:'Merge Sort führt zunehmend größere sortierte Abschnitte zusammen.',
+  natural:'Natural Merge Sort erkennt vorhandene Ordnung. Besonders passend: sortierte Blöcke oder umgekehrte Abschnitte.',
+  tim:'Timsort nutzt natürliche Abschnitte, kurze Einfügeschritte und blockweises Zusammenführen.',
+  smooth:'Smoothsort nutzt Leonardo-Heaps und profitiert von bereits geordneten Pixeln.',
+  american:'American Flag Sort verteilt Pixel direkt in 256 Wertebereiche und unterteilt diese weiter.',
+  pancake:'Pancake Sort dreht Array-Anfänge um. Die Bewegung folgt deinem Bildpfad.',
+  heap:'Heapsort stellt das Bild über eine Baumstruktur von hinten nach vorn wieder her.',
+  shell:'Shellsort ordnet zunächst weit entfernte, später benachbarte Positionen.',comb:'Comb Sort vergleicht Positionen mit schrumpfendem Abstand.',
+  bitonic:'Bitonic Sort verwendet ein festes Netz aus Vergleichen und Vertauschungen.',oemerge:'Batchers Sortiernetz führt Teilbereiche mit einem festen Vergleichsmuster zusammen.',
+  radix:'Radix LSD sortiert vom niedrigsten zum höchsten Byte.',radix16:'Radix LSD ordnet jeweils vier Bits – mit mehr sichtbaren Zwischenstufen.',
+  radixmsd:'Radix MSD trennt die Pixel bitweise, vom höchsten zum niedrigsten Bit.',counting:'Counting Sort ordnet die eindeutigen Originalindizes direkt zu.',
+  insertion:'Insertion Sort fügt jeden Pixel an seiner richtigen Stelle ein.',selection:'Selection Sort sucht nacheinander den kleinsten verbleibenden Index.',
+  cycle:'Cycle Sort bringt Pixel in Zyklen an ihre Zielpositionen.',cocktail:'Cocktail Shaker tauscht Nachbarn abwechselnd vorwärts und rückwärts.',
+  oddeven:'Odd-Even Sort vergleicht abwechselnd gerade und ungerade Nachbarpaare.',gnome:'Gnome Sort wandert bei vertauschten Nachbarn einen Schritt zurück.',bubble:'Bubble Sort lässt große Indizes durch Nachbartausch nach hinten wandern.'
+};
+const modeHelp={
+  random:'Alle Pixel werden mit dem Seed vollständig gemischt.',local:'Benachbarte Positionen werden getauscht. Der Radius gilt pro Tausch; ein Pixel kann mehrfach wandern.',
+  few:'Nur der gewählte Anteil der Pixel wird paarweise getauscht. Alle übrigen bleiben an ihrer Position.',
+  tileSwap:'Ganze Bildkacheln wechseln ihre Plätze; die Details innerhalb einer Kachel bleiben erhalten.',
+  tileMix:'Die grobe Bildstruktur bleibt erhalten; nur innerhalb jeder Kachel werden Pixel gemischt.',
+  shifts:'Zeilen oder Spalten werden zyklisch versetzt. Am Rand verschwundene Pixel kommen gegenüber wieder hinein.',
+  sections:'Ausgewählte Abschnitte entlang des Bildpfads werden umgekehrt.',blocks:'Intern sortierte Abschnitte des Bildpfads werden als ganze Blöcke vertauscht.',
+  hue:'Pixel werden nach Farbton aufgereiht; graue Pixel folgen am Ende.',saturation:'Pixel werden von geringer zu hoher Sättigung aufgereiht.',
+  bright:'Die Pixel werden entlang des Bildpfads von hell nach dunkel aufgereiht.',dark:'Die Pixel werden entlang des Bildpfads von dunkel nach hell aufgereiht.',
+  original:'Das Original ist bereits sortiert – zum Vergleichen der Arbeit ohne Unordnung.',
+  flipv:'Das Bild wird vertikal gespiegelt.',fliph:'Das Bild wird horizontal gespiegelt.',rot90:'Das gesamte Bild wird um 90° gedreht.',rot180:'Das gesamte Bild wird um 180° gedreht.',reverse:'Die Reihenfolge entlang des gewählten Bildpfads wird vollständig umgekehrt.'
+};
+const randomModes=new Set(['random','local','few','tileSwap','tileMix','shifts','sections','blocks']);
+function updateControls(){
+  updateSizes();const m=$('mode').value,c=$('curve').value;
+  const visibility={tileField:c==='tiles'||m==='tileSwap'||m==='tileMix',chunkField:m==='sections'||m==='blocks',fewField:m==='few',localField:m==='local',axisField:m==='shifts',shiftField:m==='shifts',amplitudeField:m==='shifts',waveField:m==='shifts'&&$('shiftStyle').value==='wave',checkerField:c==='checker',outerField:c==='tiles',innerField:c==='tiles'};
+  for(const[id,visible]of Object.entries(visibility))$(id).hidden=!visible;
+  $('mixOptions').hidden=!Object.values(visibility).some(Boolean);
+  $('algHint').textContent=algorithmHelp[$('alg').value]+(isQuad($('alg').value)?' Langsames Verfahren: auf 256 × 256 begrenzt.':'');
+  $('modeHint').textContent=modeHelp[m];
+  $('newMix').disabled=!srcImg||!randomModes.has(m);
+  for(const id of ['go','shuf','surprise'])$(id).disabled=!srcImg;
+  $('newMix').title=randomModes.has(m)?'Neuen Seed erzeugen und Ausgangszustand neu mischen':'Dieser Ausgangszustand enthält keinen Zufall';
+}
+function rebuild(){updateControls();setSize($('size').value)}
+function start(){
+  if(!srcImg){stat('Bitte zuerst ein Bild laden.');return}
+  cancelAnimationFrame(frame);frame=null;
+  if(done)reset();fading=false;setRun(true);lastT=performance.now();rateT=lastT;rateSteps=0;
+  stat('Läuft: '+$('alg').selectedOptions[0].text+' · '+$('curve').selectedOptions[0].text+' · '+W+'×'+H);
+  frame=requestAnimationFrame(loop);
+}
+function randomStart(){
+  $('seed').value=newSeed();const chooseRandom=seededRandom($('seed').value+'|settings');
+  const choose=values=>values[Math.floor(chooseRandom()*values.length)];
+  $('alg').value=choose(Object.keys(algs));$('curve').value=choose(Object.keys(curves));$('mode').value=choose(Object.keys(modes).filter(v=>v!=='original'));
+  for(const id of ['tileSize','tileOuter','tileInner','checkerSize','chunkSize','amount','radius','axis','shiftStyle','amplitude','waves','pathStart','pathDirection','pathRotation','pathMirror'])$(id).value=choose(Array.from($(id).options,o=>o.value));
+  $('size').value=isQuad($('alg').value)?'256x256':choose(['256x256','512x512','1024x1024']);
+  rebuild();start();
+}
+$('go').onclick=()=>{if(!running){start();return}cancelAnimationFrame(frame);frame=null;setRun(false);stat('Pausiert – mit „Fortsetzen“ geht es weiter.');startFade()};
+$('shuf').onclick=reset;
+$('newMix').onclick=()=>{$('seed').value=newSeed();reset()};
+$('surprise').onclick=randomStart;
+$('alg').onchange=()=>{const previousSize=W;updateControls();if(isQuad($('alg').value)&&W>256)setSize('256x256');else reset();stat((previousSize!==W?'Auf 256×256 umgeschaltet. ':'')+'Algorithmus gewechselt – gleiche Ausgangsmischung bei gleichem Raster.')};
+for(const id of ['mode','curve','size','tileSize','tileOuter','tileInner','checkerSize','chunkSize','amount','radius','axis','shiftStyle','amplitude','waves','pathStart','pathDirection','pathRotation','pathMirror','seed'])$(id).onchange=rebuild;
 $('ops').oninput=e=>{ops=Math.round(Math.pow(10,e.target.value/10));$('opsv').textContent=fmt(ops)};
 $('dec').oninput=e=>{decay=e.target.value/1000;$('decv').textContent=decay.toFixed(3).replace('.',',')};
 $('up').onclick=()=>$('file').click();
-$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{srcImg=im;loadSource();buildCurve();reset()};im.src=URL.createObjectURL(f)};
-updateSizes();setSize($('size').value);
+let imageLoad=0;
+$('file').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;const token=++imageLoad,url=URL.createObjectURL(f),im=new Image();
+  im.onload=()=>{URL.revokeObjectURL(url);if(token!==imageLoad)return;srcImg=im;rebuild()};
+  im.onerror=()=>{URL.revokeObjectURL(url);if(token===imageLoad)stat('Das Bild konnte nicht gelesen werden. Bitte eine andere Bilddatei wählen.')};
+  im.src=url;e.target.value='';
+};
+function loadDefaultImage(){
+  const token=++imageLoad,im=new Image();
+  stat('Papageienbild wird geladen …');
+  im.onload=()=>{if(token!==imageLoad)return;srcImg=im;rebuild()};
+  im.onerror=()=>{if(token===imageLoad)stat('Das Papageienbild konnte nicht geladen werden. Bitte über „Bild laden“ eine Datei auswählen.')};
+  im.src='assets/parrot.jpg';
+}
+rebuild();
+loadDefaultImage();
+
 </script>
 </body>
 </html>
