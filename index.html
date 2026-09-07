@@ -66,7 +66,7 @@ output { color:#e6e4dd; font-variant-numeric:tabular-nums; }
 <div class="actions">
 <button id="go" class="primary">Start</button><button id="shuf" title="Mit demselben Seed und denselben Einstellungen zurücksetzen">Gleiche Mischung</button>
 <button id="newMix">Neu mischen</button><button id="up">Bild laden</button>
-<button id="surprise" title="Algorithmus, Bildpfad, Mischung und passende Größe zufällig wählen und starten">Zufallsstart</button>
+<button id="surprise" title="Algorithmus, Bildpfad und Mischung zufällig wählen; mit höchster passender Auflösung und abgestimmtem Tempo starten">Zufallsstart</button>
 <input type="file" id="file" accept="image/*" hidden>
 </div>
 <div class="panel">
@@ -194,7 +194,7 @@ output { color:#e6e4dd; font-variant-numeric:tabular-nums; }
 </div>
 <details class="help"><summary>So funktioniert es</summary>
 <p>Jeder Pixel behält seinen Originalindex. Der Bildpfad legt fest, in welcher Reihenfolge die Positionen durchlaufen werden. Der Algorithmus sortiert die vermischten Pixel zurück zum Original. Leuchtspuren zeigen die zuletzt berührten Positionen.</p>
-<p>Ein Wechsel der Einstellungen stoppt den Lauf und stellt den Ausgangszustand wieder her. „Gleiche Mischung“ wiederholt ihn, „Neu mischen“ erzeugt einen neuen Seed. „Zufallsstart“ wählt eine neue Kombination inklusive der Detailoptionen; dein geladenes Bild bleibt erhalten.</p>
+<p>Ein Wechsel der Einstellungen stoppt den Lauf und stellt den Ausgangszustand wieder her. „Gleiche Mischung“ wiederholt ihn, „Neu mischen“ erzeugt einen neuen Seed. „Zufallsstart“ wählt eine neue Kombination inklusive der Detailoptionen, die höchste passende Auflösung und ein zum Algorithmus passendes Tempo. Dein geladenes Bild bleibt erhalten. Das Tempo kannst du jederzeit verändern.</p>
 <p id="tempoHint">Das Tempo begrenzt die Schritte pro Bildaktualisierung. Bei aufwendigen Berechnungen arbeitet die Anwendung in kürzeren Etappen, damit Pause und andere Bedienelemente erreichbar bleiben. Langsame quadratische Verfahren sind auf 256 × 256 begrenzt.</p>
 </details>
 </main>
@@ -561,12 +561,25 @@ function start(){
   stat('Läuft: '+$('alg').selectedOptions[0].text+' · '+$('curve').selectedOptions[0].text+' · '+W+'×'+H);
   frame=requestAnimationFrame(loop);
 }
+// Target roughly 20 seconds of visible work at 60 frames/s; these are
+// step estimates, not runtime guarantees. The 8 ms frame budget still wins.
+function randomTempo(algorithm,n){
+  if(isQuad(algorithm))return 55;
+  const log=Math.log2(n),passes=Math.ceil(log/8);
+  const estimates={counting:n*1.125,radix:n*0.375*passes,radix16:n*0.375*Math.ceil(log/4),american:n*2*passes,bitonic:n*log*(log+1)/4,oemerge:n*log*log/4,natural:n*log*2,tim:n*log*2,smooth:n*log*3,shell:n*log*2,comb:n*log*2};
+  return Math.max(10,Math.min(55,Math.round(10*Math.log10((estimates[algorithm]??n*log)/1200))));
+}
+function setTempo(value){
+  $('ops').value=String(value);ops=Math.round(Math.pow(10,value/10));$('opsv').textContent=fmt(ops);
+}
 function randomStart(){
   $('seed').value=newSeed();const chooseRandom=seededRandom($('seed').value+'|settings');
   const choose=values=>values[Math.floor(chooseRandom()*values.length)];
   $('alg').value=choose(Object.keys(algs));$('curve').value=choose(Object.keys(curves));$('mode').value=choose(Object.keys(modes).filter(v=>v!=='original'));
   for(const id of ['tileSize','tileOuter','tileInner','checkerSize','chunkSize','amount','radius','axis','shiftStyle','amplitude','waves','pathStart','pathDirection','pathRotation','pathMirror'])$(id).value=choose(Array.from($(id).options,o=>o.value));
-  $('size').value=isQuad($('alg').value)?'256x256':choose(['256x256','512x512','1024x1024']);
+  $('size').value=isQuad($('alg').value)?'256x256':'1024x1024';
+  const side=Number($('size').value.split('x')[0]);
+  setTempo(randomTempo($('alg').value,side*side));
   rebuild();start();
 }
 $('go').onclick=()=>{if(!running){start();return}cancelAnimationFrame(frame);frame=null;setRun(false);stat('Pausiert – mit „Fortsetzen“ geht es weiter.');startFade()};
@@ -575,7 +588,7 @@ $('newMix').onclick=()=>{$('seed').value=newSeed();reset()};
 $('surprise').onclick=randomStart;
 $('alg').onchange=()=>{const previousSize=W;updateControls();if(isQuad($('alg').value)&&W>256)setSize('256x256');else reset();stat((previousSize!==W?'Auf 256×256 umgeschaltet. ':'')+'Algorithmus gewechselt – gleiche Ausgangsmischung bei gleichem Raster.')};
 for(const id of ['mode','curve','size','tileSize','tileOuter','tileInner','checkerSize','chunkSize','amount','radius','axis','shiftStyle','amplitude','waves','pathStart','pathDirection','pathRotation','pathMirror','seed'])$(id).onchange=rebuild;
-$('ops').oninput=e=>{ops=Math.round(Math.pow(10,e.target.value/10));$('opsv').textContent=fmt(ops)};
+$('ops').oninput=e=>setTempo(Number(e.target.value));
 $('dec').oninput=e=>{decay=e.target.value/1000;$('decv').textContent=decay.toFixed(3).replace('.',',')};
 $('up').onclick=()=>$('file').click();
 let imageLoad=0;
