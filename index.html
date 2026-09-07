@@ -46,7 +46,7 @@
 <body>
 <main>
 <h1>Pixel-Sort – Sortieralgorithmen auf Bildern <span style="color:#a8a69f;font-size:13px">v6</span></h1>
-<canvas id="cv" width="512" height="384"></canvas>
+<canvas id="cv" width="512" height="512"></canvas>
 
 <div class="panel">
   <select id="alg" aria-label="Algorithmus">
@@ -57,7 +57,7 @@
       <option value="shell">Shellsort</option>
       <option value="comb">Comb Sort</option>
     </optgroup>
-    <optgroup label="Sortiernetze (nur quadratisch)">
+    <optgroup label="Sortiernetze">
       <option value="bitonic">Bitonic Sort</option>
       <option value="oemerge">Odd-Even Mergesort (Batcher)</option>
     </optgroup>
@@ -112,10 +112,9 @@
     <option value="original">Original (sortiert)</option>
   </select>
   <select id="size" aria-label="Format">
-    <option value="512x384">512 × 384</option>
-    <option value="512x512">512 × 512 (2¹⁸)</option>
-    <option value="256x192">256 × 192</option>
     <option value="256x256">256 × 256 (2¹⁶)</option>
+    <option value="512x512" selected>512 × 512 (2¹⁸)</option>
+    <option value="1024x1024">1024 × 1024 (2²⁰)</option>
   </select>
   <button id="up">Bild laden</button>
   <button id="go">Start</button>
@@ -142,15 +141,15 @@
 </div>
 <div id="stat">Bereit</div>
 
-<p class="help">Das Bild wird entlang der gewählten Kurve zu einem 1D-Array aufgerollt, in den gewählten Ausgangszustand gebracht und vom Algorithmus zurücksortiert. Jeder Pixel trägt seinen Originalindex als Sortierschlüssel; als Ausgangszustand lassen sich die Pixel auch nach Helligkeit entlang der Kurve aufreihen. Zuletzt berührte Pixel werden weiß überlagert und verblassen mit dem eingestellten Decay. Die Ops-Skala ist logarithmisch; die quadratischen Verfahren schalten automatisch auf das 256er-Raster (ein Viertel der Pixel, ein Sechzehntel der Laufzeit) und laufen dort in wenigen Minuten durch.</p>
+<p class="help">Das Bild wird entlang der gewählten Kurve zu einem 1D-Array aufgerollt, in den gewählten Ausgangszustand gebracht und vom Algorithmus zurücksortiert. Jeder Pixel trägt seinen Originalindex als Sortierschlüssel; als Ausgangszustand lassen sich die Pixel auch nach Helligkeit entlang der Kurve aufreihen. Zuletzt berührte Pixel werden weiß überlagert und verblassen mit dem eingestellten Decay. Bei einem Algorithmuswechsel wird der Ausgangszustand wiederhergestellt. Die 90°-Drehung dreht das gesamte Bild. Die Ops-Skala ist logarithmisch. Verfahren mit quadratischer Laufzeit sind auf 256 × 256 begrenzt; die übrigen Verfahren unterstützen auch 512 × 512 und 1024 × 1024.</p>
 </main>
 
 <script>
 const TRAIL=0.5;
-let W=512,H=384,N=W*H;
+let W=512,H=512,N=W*H;
 const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
 let img,px,colors,cseq,lum,map,inv,a,heat,srcImg=null;
-let cmp=0,wr=0,steps=0,gen=null,running=false,done=false,decay=0.96,ops=10000,maxH=0,fading=false,mk=0,elapsed=0,lastT=0,rateSteps=0,rateT=0,rate=0;
+let cmp=0,wr=0,steps=0,gen=null,running=false,done=false,decay=0.96,ops=10000,maxH=0,fading=false,mk=0,elapsed=0,lastT=0,rateSteps=0,rateT=0,rate=0,frame=null;
 const fmt=n=>n.toLocaleString('de-DE');
 const $=id=>document.getElementById(id);
 function ftime(ms){const s=ms/1000,m=Math.floor(s/60),r=s-m*60;return m+':'+(r<10?'0':'')+r.toFixed(1).replace('.',',')}
@@ -170,7 +169,7 @@ diag(){let k=0;for(let s=0;s<W+H-1;s++){const y0=Math.max(0,s-W+1),y1=Math.min(H
 spiral(){let k=0,t=0,b=H-1,l=0,r=W-1;while(t<=b&&l<=r){for(let x=l;x<=r;x++)map[k++]=t*W+x;t++;for(let y=t;y<=b;y++)map[k++]=y*W+r;r--;if(t<=b){for(let x=r;x>=l;x--)map[k++]=b*W+x;b--}if(l<=r){for(let y=b;y>=t;y--)map[k++]=y*W+l;l++}}},
 hilbert(){mk=0;const o=Math.log2(W);hil(0,0,W,0,0,W,o)},
 moore(){mk=0;const h=W/2,o=Math.log2(h);hil(h,0,0,h,-h,0,o);hil(h,h,0,h,-h,0,o);hil(h,2*h,0,-h,h,0,o);hil(h,h,0,-h,h,0,o)},
-peano(){mk=0;const D=W>256?12:10,S=Math.pow(3,D/2);for(let d=0;d<S*S;d++){let t=d;const dg=new Array(D);for(let i=D-1;i>=0;i--){dg[i]=t%3;t=(t-dg[i])/3}let x=0,y=0,sx=0,sy=0;for(let i=0;i<D/2;i++){let xd=dg[2*i],yd=dg[2*i+1];if(sy&1)xd=2-xd;sy+=yd;sx+=xd;if((sx-xd)&1)yd=2-yd;x=x*3+xd;y=y*3+yd}emit(x,y)}},
+peano(){mk=0;const D=2*Math.ceil(Math.log(Math.max(W,H))/Math.log(3)),S=Math.pow(3,D/2);for(let d=0;d<S*S;d++){let t=d;const dg=new Array(D);for(let i=D-1;i>=0;i--){dg[i]=t%3;t=(t-dg[i])/3}let x=0,y=0,sx=0,sy=0;for(let i=0;i<D/2;i++){let xd=dg[2*i],yd=dg[2*i+1];if(sy&1)xd=2-xd;sy+=yd;sx+=xd;if((sx-xd)&1)yd=2-yd;x=x*3+xd;y=y*3+yd}emit(x,y)}},
 zorder(){mk=0;const B=Math.log2(W);for(let d=0;d<W*W;d++){let x=0,y=0;for(let b=0;b<B;b++){x|=((d>>(2*b))&1)<<b;y|=((d>>(2*b+1))&1)<<b}emit(x,y)}}
 };
 function buildCurve(){curves[$('curve').value]();for(let k=0;k<N;k++){const c=colors[map[k]];cseq[k]=c;inv[map[k]]=k;lum[k]=(0.299*(c&255)+0.587*((c>>8)&255)+0.114*((c>>16)&255))|0}}
@@ -182,15 +181,14 @@ local(){for(let i=0;i<N;i++)a[i]=i;const R=Math.round(100*W/512);for(let n=0;n<N
 flipv(){byPixel((x,y)=>(H-1-y)*W+x)},
 fliph(){byPixel((x,y)=>y*W+(W-1-x))},
 rot180(){byPixel((x,y)=>(H-1-y)*W+(W-1-x))},
-rot90(){if(W===H)byPixel((x,y)=>(W-1-x)*W+y);else{const T=W/4;byPixel((x,y)=>{const tx=x-x%T,ty=y-y%T,lx=x%T,ly=y%T;return(ty+(T-1-lx))*W+(tx+ly)})}},
+rot90(){byPixel((x,y)=>(W-1-x)*W+y)},
 reverse(){for(let k=0;k<N;k++)a[k]=N-1-k},
 bright(){byLum(true)},
 dark(){byLum(false)},
 original(){for(let k=0;k<N;k++)a[k]=k}
 };
-function reset(){modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+W+'×'+H+', '+$('mode').selectedOptions[0].text.toLowerCase())}
-function setSize(v){const[w,h]=v.split('x').map(Number);W=w;H=h;N=W*H;$('size').value=v;alloc();loadSource();buildCurve();reset()}
-function isNet(v){return v==='bitonic'||v==='oemerge'}
+function reset(){cancelAnimationFrame(frame);frame=null;modes[$('mode').value]();heat.fill(0);cmp=0;wr=0;steps=0;elapsed=0;rate=0;rateSteps=0;gen=null;done=false;fading=false;setRun(false);render();stat('Bereit – '+W+'×'+H+', '+$('mode').selectedOptions[0].text.toLowerCase())}
+function setSize(v){if(isQuad($('alg').value))v='256x256';const[w,h]=v.split('x').map(Number);W=w;H=h;N=W*H;$('size').value=v;alloc();loadSource();buildCurve();reset()}
 function isQuad(v){return['insertion','selection','cycle','cocktail','oddeven','gnome','bubble'].includes(v)}
 function t(i){heat[i]=1}
 function sw(i,j){const x=a[i];a[i]=a[j];a[j]=x;wr+=2;heat[i]=1;heat[j]=1}
@@ -216,22 +214,23 @@ function*radixmsd(){const st=[0,N-1,Math.ceil(Math.log2(N))-1];while(st.length){
 function*counting(){const aux=new Uint32Array(N);for(let i=0;i<N;i++){aux[a[i]]=a[i];wr++;t(i);t(a[i]);yield}for(let i=0;i<N;i++){a[i]=aux[i];if((i&7)===0){t(i);yield}}}
 const algs={bubble,cocktail,oddeven,gnome,insertion,selection,cycle,shell,comb,quick,merge,heap,bitonic,oemerge,radix,radix16,radixmsd,counting};
 function render(){maxH=0;for(let k=0;k<N;k++){const c=cseq[a[k]],h=heat[k];if(h>0.02){const f=h*TRAIL,r=c&255,g=(c>>8)&255,b=(c>>16)&255;px[map[k]]=(255<<24)|((b+(255-b)*f)<<16)|((g+(255-g)*f)<<8)|(r+(255-r)*f);if(h>maxH)maxH=h}else px[map[k]]=c;heat[k]=h*decay}ctx.putImageData(img,0,0);$('scmp').textContent=fmt(cmp);$('swr').textContent=fmt(wr);$('stime').textContent=ftime(elapsed);$('srate').textContent=fmt(Math.round(rate))}
-function fade(){if(!fading)return;render();if(maxH>0.02)requestAnimationFrame(fade);else fading=false}
-function startFade(){if(!fading){fading=true;requestAnimationFrame(fade)}}
+function fade(){if(!fading)return;render();if(maxH>0.02)frame=requestAnimationFrame(fade);else fading=false}
+function startFade(){if(!fading){fading=true;frame=requestAnimationFrame(fade)}}
 function stat(s){$('stat').textContent=s}
 function setRun(r){running=r;$('go').textContent=r?'Pause':'Start'}
-function loop(){if(!running){startFade();return}const now=performance.now();elapsed+=now-lastT;lastT=now;if(!gen)gen=algs[$('alg').value]();let k=0;for(;k<ops;k++){if(gen.next().done){done=true;break}}steps+=k;rateSteps+=k;if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}render();if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}stat('Läuft: '+$('alg').selectedOptions[0].text+' auf '+$('curve').selectedOptions[0].text+', '+W+'×'+H);requestAnimationFrame(loop)}
-$('go').onclick=()=>{if(done)reset();setRun(!running);if(running){fading=false;lastT=performance.now();rateT=lastT;rateSteps=0;requestAnimationFrame(loop)}};
+function loop(){if(!running){startFade();return}const now=performance.now();elapsed+=now-lastT;lastT=now;if(!gen)gen=algs[$('alg').value]();let k=0;for(;k<ops;k++){if(gen.next().done){done=true;break}}steps+=k;rateSteps+=k;if(now-rateT>=500){rate=rateSteps*1000/(now-rateT);rateSteps=0;rateT=now}render();if(done){setRun(false);stat('Fertig nach '+ftime(elapsed)+' – '+fmt(steps)+' Schritte, '+fmt(cmp)+' Vergleiche, '+fmt(wr)+' Schreibzugriffe');startFade();return}stat('Läuft: '+$('alg').selectedOptions[0].text+' auf '+$('curve').selectedOptions[0].text+', '+W+'×'+H);frame=requestAnimationFrame(loop)}
+$('go').onclick=()=>{cancelAnimationFrame(frame);frame=null;if(done)reset();setRun(!running);if(running){fading=false;lastT=performance.now();rateT=lastT;rateSteps=0;frame=requestAnimationFrame(loop)}else startFade()};
 $('shuf').onclick=reset;
 $('mode').onchange=reset;
-$('alg').onchange=()=>{gen=null;done=false;const v=$('alg').value;if(isNet(v)&&W!==H){setSize(W+'x'+W);stat('Auf '+W+'×'+W+' umgeschaltet – Sortiernetze brauchen 2ⁿ Elemente')}else if(isQuad(v)&&W===512){setSize('256x'+(H===512?256:192));stat('Auf '+W+'×'+H+' umgeschaltet – quadratische Laufzeit')}else if(!running)stat('Algorithmus gewechselt – Zurücksetzen empfohlen')};
+function updateSizes(){const quad=isQuad($('alg').value);for(const option of $('size').options)option.disabled=quad&&option.value!=='256x256'}
+$('alg').onchange=()=>{updateSizes();if(isQuad($('alg').value)&&W>256){setSize('256x256');stat('Auf '+W+'×'+H+' umgeschaltet – quadratische Laufzeit')}else{reset();stat('Algorithmus gewechselt – Ausgangszustand wiederhergestellt')}};
 $('curve').onchange=()=>{buildCurve();reset()};
-$('size').onchange=()=>{const v=$('size').value,[w,h]=v.split('x').map(Number);if(w!==h&&isNet($('alg').value))$('alg').value='quick';setSize(v)};
+$('size').onchange=()=>setSize($('size').value);
 $('ops').oninput=e=>{ops=Math.round(Math.pow(10,e.target.value/10));$('opsv').textContent=fmt(ops)};
 $('dec').oninput=e=>{decay=e.target.value/1000;$('decv').textContent=decay.toFixed(3).replace('.',',')};
 $('up').onclick=()=>$('file').click();
 $('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{srcImg=im;loadSource();buildCurve();reset()};im.src=URL.createObjectURL(f)};
-alloc();genImage();buildCurve();reset();
+updateSizes();setSize($('size').value);
 </script>
 </body>
 </html>
