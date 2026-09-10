@@ -1,154 +1,89 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Thread Lines Prototype</title>
-  <style>
-    :root{color-scheme:light dark;--bg:#f4f3ef;--panel:#ffffff;--text:#161616;--muted:#6f6f6f;--line:#d9d7d0;--accent:#161616;--buttonText:#fff}
-    @media(prefers-color-scheme:dark){:root{--bg:#111;--panel:#1b1b1b;--text:#f4f4f4;--muted:#aaa;--line:#333;--accent:#f1f1f1;--buttonText:#111}}
-    *{box-sizing:border-box}
-    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    body{padding:clamp(14px,2.4vw,30px)}
-    .app{max-width:1400px;margin:0 auto}
-    header{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:20px}
-    h1{margin:0;font-size:clamp(28px,4vw,48px);letter-spacing:-.04em;font-weight:750}
-    header p{margin:6px 0 0;color:var(--muted);max-width:720px;line-height:1.45}
-    .layout{display:grid;grid-template-columns:minmax(270px,340px) 1fr;gap:18px;align-items:start}
-    .panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 32px rgba(0,0,0,.05)}
-    .panel{padding:18px;position:sticky;top:16px}
-    .stage{padding:14px;min-height:500px}
-    .drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;padding:18px;text-align:center;cursor:pointer;transition:.15s;background:rgba(127,127,127,.035);overflow:hidden;min-height:78px;display:grid;place-items:center}
-    .drop.drag{transform:scale(1.01);border-color:var(--text)}
-    .drop strong{display:block;margin-bottom:4px}.drop small{color:var(--muted)}
-    .fileInput{position:absolute;inset:0;width:100%;height:100%;opacity:.001;cursor:pointer;font-size:100px}
-    .group{margin-top:18px}.group h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 12px}
-    .control{margin:0 0 15px}.labelrow{display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;font-size:14px}.value{font-variant-numeric:tabular-nums;color:var(--muted)}
-    input[type=range]{width:100%;accent-color:var(--accent)}
-    .checks{display:grid;gap:9px;font-size:14px}.checks label{display:flex;gap:9px;align-items:center}
-    .buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
-    button{appearance:none;border:1px solid var(--line);background:transparent;color:var(--text);border-radius:11px;padding:11px 12px;font:inherit;font-weight:650;cursor:pointer}
-    button.primary{grid-column:1/-1;background:var(--accent);color:var(--buttonText);border-color:var(--accent)}
-    button:disabled{opacity:.45;cursor:not-allowed}
-    .status{margin-top:14px;font-size:13px;color:var(--muted);line-height:1.4;min-height:38px}
-    progress{width:100%;height:7px;margin-top:9px;accent-color:var(--accent)}
-    .canvasWrap{display:grid;grid-template-columns:1fr minmax(180px,25%);gap:14px;min-height:calc(100vh - 120px)}
-    .mainCanvasBox,.previewBox{position:relative;display:flex;align-items:center;justify-content:center;border-radius:13px;overflow:hidden;background:#fff;min-height:300px}
-    canvas{display:block;max-width:100%;max-height:calc(100vh - 150px);width:auto;height:auto;touch-action:none}
-    .previewBox{align-items:flex-start;padding:10px;background:rgba(127,127,127,.055)}
-    .previewInner{width:100%}.previewInner h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:3px 0 9px}.previewInner canvas{width:100%;height:auto;border-radius:8px;background:white}
-    .stats{margin-top:13px;border-top:1px solid var(--line);padding-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:12px;color:var(--muted)}
-    .stats b{display:block;color:var(--text);font-size:16px;font-variant-numeric:tabular-nums;margin-top:1px}
-    .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#999;padding:30px}.empty strong{display:block;color:#555;margin-bottom:6px}
-    @media(max-width:900px){.layout{grid-template-columns:1fr}.panel{position:static}.canvasWrap{grid-template-columns:1fr;min-height:0}.previewBox{min-height:0}.previewInner canvas{max-width:240px}.previewInner{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:start}.previewInner h3{grid-column:1/-1}.stage{min-height:0}}
-    @media(max-width:560px){body{padding:10px}.panel,.stage{border-radius:14px}.previewInner{display:block}.buttons{grid-template-columns:1fr}.primary{grid-column:auto!important}}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Thread Lines Prototype</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f3ef;--panel:#fff;--text:#161616;--muted:#707070;--line:#d9d7d0;--accent:#161616;--buttonText:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#111;--panel:#1b1b1b;--text:#f4f4f4;--muted:#aaa;--line:#333;--accent:#f1f1f1;--buttonText:#111}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{padding:clamp(12px,2.2vw,28px)}.app{max-width:1450px;margin:auto}h1{margin:0;font-size:clamp(28px,4vw,48px);letter-spacing:-.04em}header p{margin:6px 0 20px;color:var(--muted)}.layout{display:grid;grid-template-columns:minmax(300px,370px) 1fr;gap:18px;align-items:start}.panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px}.panel{padding:18px;position:sticky;top:14px}.stage{padding:14px}.drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;min-height:76px;display:grid;place-items:center;text-align:center;overflow:hidden;background:rgba(127,127,127,.035)}.fileInput{position:absolute;inset:0;width:100%;height:100%;opacity:.001;font-size:100px}.drop strong{display:block}.drop small{color:var(--muted)}.group{margin-top:18px}.group h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 11px}.control{margin-bottom:13px}.labelrow{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px}.value{color:var(--muted);font-variant-numeric:tabular-nums}input[type=range]{width:100%;accent-color:var(--accent)}.checks{display:grid;gap:8px;font-size:14px}.checks label{display:flex;align-items:center;gap:8px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}button{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:11px;padding:11px;font:inherit;font-weight:650}button.primary{grid-column:1/-1;background:var(--accent);color:var(--buttonText);border-color:var(--accent)}button:disabled{opacity:.45}.status{margin-top:13px;color:var(--muted);font-size:13px;min-height:36px}progress{width:100%;height:7px;margin-top:8px;accent-color:var(--accent)}.canvasWrap{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px}.mainCanvasBox{position:relative;display:grid;place-items:center;background:#fff;border-radius:13px;overflow:hidden;min-height:560px}.mainCanvasBox canvas{display:block;max-width:100%;max-height:calc(100vh - 120px);width:auto;height:auto}.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#999;padding:24px}.empty strong{display:block;color:#555;margin-bottom:5px}.previewCol{display:grid;gap:12px;align-content:start}.previewCard{background:rgba(127,127,127,.055);border-radius:13px;padding:10px}.previewCard h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2px 0 8px}.previewCard canvas{display:block;width:100%;height:auto;border-radius:8px;background:#fff}.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;font-size:12px;color:var(--muted)}.stats b{display:block;color:var(--text);font-size:16px}.hint{font-size:12px;line-height:1.4;color:var(--muted);margin-top:8px}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.panel{position:static}.canvasWrap{grid-template-columns:1fr 220px}.mainCanvasBox{min-height:420px}}
+@media(max-width:650px){.canvasWrap{grid-template-columns:1fr}.previewCol{grid-template-columns:1fr 1fr}.stats{grid-column:1/-1}.mainCanvasBox{min-height:340px}.buttons{grid-template-columns:1fr}.primary{grid-column:auto!important}}
+</style>
 </head>
 <body>
 <div class="app">
-  <header>
-    <div><h1>Thread Lines</h1><p>Ein Bild wird ausschließlich aus geraden Fäden zwischen Nägeln auf einem Kreis rekonstruiert. Dunkle Stellen entstehen durch viele überlagerte Linien.</p></div>
-  </header>
+<header><h1>Thread Lines</h1><p>String-Art-Rekonstruktion aus geraden Fäden zwischen Nägeln auf einem Kreis.</p></header>
+<div class="layout">
+<aside class="panel">
+<div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*,.heic,.heif"><div><strong>Bild auswählen</strong><small>Foto antippen oder hineinziehen</small></div></div>
 
-  <div class="layout">
-    <aside class="panel">
-      <div class="drop" id="dropZone">
-        <input class="fileInput" type="file" id="fileInput" accept="image/*,.heic,.heif">
-        <div><strong>Bild auswählen</strong><small>Foto antippen oder hineinziehen</small></div>
-      </div>
-
-      <div class="group">
-        <h2>Berechnung</h2>
-        <div class="control"><div class="labelrow"><label for="nails">Nägel</label><span class="value" id="nailsValue">180</span></div><input id="nails" type="range" min="40" max="320" step="10" value="180"></div>
-        <div class="control"><div class="labelrow"><label for="threads">Fäden</label><span class="value" id="threadsValue">1800</span></div><input id="threads" type="range" min="100" max="5000" step="100" value="1800"></div>
-        <div class="control"><div class="labelrow"><label for="sampleSize">Analyseauflösung</label><span class="value" id="sampleSizeValue">260 px</span></div><input id="sampleSize" type="range" min="140" max="380" step="20" value="260"></div>
-      </div>
-
-      <div class="group">
-        <h2>Darstellung</h2>
-        <div class="control"><div class="labelrow"><label for="lineWidth">Fadenstärke</label><span class="value" id="lineWidthValue">0.45 px</span></div><input id="lineWidth" type="range" min="0.15" max="2" step="0.05" value="0.45"></div>
-        <div class="control"><div class="labelrow"><label for="opacity">Fadendichte</label><span class="value" id="opacityValue">8%</span></div><input id="opacity" type="range" min="0.02" max="0.22" step="0.01" value="0.08"></div>
-        <div class="checks"><label><input type="checkbox" id="showNails" checked> Nägel anzeigen</label><label><input type="checkbox" id="invert"> Helles Motiv auf dunklem Grund</label></div>
-      </div>
-
-      <div class="buttons"><button class="primary" id="generate" disabled>Sequenz berechnen</button><button id="redraw" disabled>Neu zeichnen</button><button id="cancel" disabled>Abbrechen</button></div>
-      <div class="status" id="status">Zuerst ein Bild auswählen.</div>
-      <progress id="progress" max="1" value="0" hidden></progress>
-    </aside>
-
-    <main class="stage">
-      <div class="canvasWrap">
-        <div class="mainCanvasBox"><canvas id="result" width="900" height="900"></canvas><div class="empty" id="empty"><div><strong>Noch kein Thread-Art-Ergebnis</strong>Bild laden und „Sequenz berechnen“ wählen.</div></div></div>
-        <div class="previewBox"><div class="previewInner"><h3>Vorlage</h3><canvas id="source" width="320" height="320"></canvas><div class="stats"><div>Sequenz<b id="statThreads">–</b></div><div>Nägel<b id="statNails">–</b></div><div>Berechnet<b id="statTime">–</b></div><div>Letzter Nagel<b id="statLast">–</b></div></div></div></div>
-      </div>
-    </main>
-  </div>
+<div class="group"><h2>Bildaufbereitung</h2>
+<div class="control"><div class="labelrow"><label for="contrast">Kontrast</label><span class="value" id="contrastValue"></span></div><input id="contrast" type="range" min="0.5" max="2.5" step="0.05" value="1.35"></div>
+<div class="control"><div class="labelrow"><label for="gamma">Gamma</label><span class="value" id="gammaValue"></span></div><input id="gamma" type="range" min="0.45" max="2.2" step="0.05" value="0.85"></div>
+<div class="control"><div class="labelrow"><label for="blackPoint">Schwarzpunkt</label><span class="value" id="blackPointValue"></span></div><input id="blackPoint" type="range" min="0" max="0.45" step="0.01" value="0.08"></div>
+<div class="control"><div class="labelrow"><label for="whitePoint">Weißpunkt</label><span class="value" id="whitePointValue"></span></div><input id="whitePoint" type="range" min="0.55" max="1" step="0.01" value="0.94"></div>
+<div class="control"><div class="labelrow"><label for="edgeBias">Konturen-Bias</label><span class="value" id="edgeBiasValue"></span></div><input id="edgeBias" type="range" min="0" max="1.5" step="0.05" value="0.35"></div>
+<div class="hint">Die bearbeitete Vorschau zeigt exakt die Tonwerte, auf die der Faden-Algorithmus optimiert.</div>
 </div>
 
+<div class="group"><h2>Berechnung</h2>
+<div class="control"><div class="labelrow"><label for="nails">Nägel</label><span class="value" id="nailsValue"></span></div><input id="nails" type="range" min="40" max="320" step="10" value="180"></div>
+<div class="control"><div class="labelrow"><label for="threads">Fäden</label><span class="value" id="threadsValue"></span></div><input id="threads" type="range" min="100" max="5000" step="100" value="1800"></div>
+<div class="control"><div class="labelrow"><label for="sampleSize">Analyseauflösung</label><span class="value" id="sampleSizeValue"></span></div><input id="sampleSize" type="range" min="140" max="380" step="20" value="260"></div>
+<div class="control"><div class="labelrow"><label for="penalty">Überdunkelungs-Strafe</label><span class="value" id="penaltyValue"></span></div><input id="penalty" type="range" min="0" max="4" step="0.1" value="1.8"></div>
+</div>
+
+<div class="group"><h2>Darstellung</h2>
+<div class="control"><div class="labelrow"><label for="lineWidth">Fadenstärke</label><span class="value" id="lineWidthValue"></span></div><input id="lineWidth" type="range" min="0.15" max="2" step="0.05" value="0.45"></div>
+<div class="control"><div class="labelrow"><label for="opacity">Fadendichte</label><span class="value" id="opacityValue"></span></div><input id="opacity" type="range" min="0.02" max="0.22" step="0.01" value="0.08"></div>
+<div class="checks"><label><input type="checkbox" id="showNails" checked> Nägel anzeigen</label><label><input type="checkbox" id="invert"> Helles Motiv auf dunklem Grund</label></div>
+</div>
+
+<div class="buttons"><button class="primary" id="generate" disabled>Sequenz berechnen</button><button id="redraw" disabled>Neu zeichnen</button><button id="cancel" disabled>Abbrechen</button></div>
+<div class="status" id="status">Zuerst ein Bild auswählen.</div><progress id="progress" max="1" value="0" hidden></progress>
+</aside>
+
+<main class="stage"><div class="canvasWrap">
+<div class="mainCanvasBox"><canvas id="result" width="900" height="900"></canvas><div class="empty" id="empty"><div><strong>Noch kein Ergebnis</strong>Bild laden und Sequenz berechnen.</div></div></div>
+<div class="previewCol">
+<div class="previewCard"><h3>Original</h3><canvas id="source" width="320" height="320"></canvas></div>
+<div class="previewCard"><h3>Optimierungsbild</h3><canvas id="processed" width="320" height="320"></canvas></div>
+<div class="previewCard stats"><div>Fäden<b id="statThreads">–</b></div><div>Nägel<b id="statNails">–</b></div><div>Zeit<b id="statTime">–</b></div><div>Letzter Nagel<b id="statLast">–</b></div></div>
+</div>
+</div></main>
+</div></div>
 <script>
-(() => {
-  'use strict';
-  const $ = id => document.getElementById(id);
-  const fileInput=$('fileInput'), dropZone=$('dropZone'), resultCanvas=$('result'), resultCtx=resultCanvas.getContext('2d'), sourceCanvas=$('source'), sourceCtx=sourceCanvas.getContext('2d',{willReadFrequently:true});
-  let image=null, imageURL=null, sequence=[], nailPositions=[], cancelled=false, computing=false, lastSettings=null;
-  const controls=['nails','threads','sampleSize','lineWidth','opacity'];
-  const formatters={nails:v=>v,threads:v=>v,sampleSize:v=>v+' px',lineWidth:v=>Number(v).toFixed(2)+' px',opacity:v=>Math.round(v*100)+'%'};
-  controls.forEach(id=>{const el=$(id),out=$(id+'Value');const sync=()=>{out.textContent=formatters[id](el.value);if((id==='lineWidth'||id==='opacity')&&sequence.length)drawResult();};el.addEventListener('input',sync);sync();});
-  $('showNails').addEventListener('change',()=>sequence.length&&drawResult());
-  $('invert').addEventListener('change',()=>sequence.length&&drawResult());
-  function setStatus(text){$('status').textContent=text;}
-  function setBusy(busy){computing=busy;$('generate').disabled=!image||busy;$('redraw').disabled=!sequence.length||busy;$('cancel').disabled=!busy;controls.forEach(id=>$(id).disabled=busy&&['nails','threads','sampleSize'].includes(id));}
-
-  function loadFile(file){
-    if(!file)return;
-    setStatus('Bild wird geladen …');
-    if(imageURL){URL.revokeObjectURL(imageURL);imageURL=null;}
-    imageURL=URL.createObjectURL(file);
-    const img=new Image();
-    img.onload=()=>{
-      image=img;sequence=[];drawSourcePreview();clearResult();$('generate').disabled=false;$('redraw').disabled=true;
-      setStatus(`${img.naturalWidth} × ${img.naturalHeight}px geladen. Bereit zur Berechnung.`);
-    };
-    img.onerror=()=>{
-      image=null;$('generate').disabled=true;
-      setStatus('Das ausgewählte Bild konnte nicht gelesen werden. Bei HEIC bitte ggf. als JPEG/PNG exportieren.');
-    };
-    img.src=imageURL;
-  }
-
-  fileInput.addEventListener('change',e=>{const file=e.target.files&&e.target.files[0];loadFile(file);e.target.value='';});
-  ['dragenter','dragover'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.add('drag');}));
-  ['dragleave','drop'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.remove('drag');}));
-  dropZone.addEventListener('drop',e=>loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]));
-
-  function cropSquare(ctx,img,size){const sw=Math.min(img.naturalWidth,img.naturalHeight),sx=(img.naturalWidth-sw)/2,sy=(img.naturalHeight-sw)/2;ctx.clearRect(0,0,size,size);ctx.drawImage(img,sx,sy,sw,sw,0,0,size,size);}
-  function drawSourcePreview(){sourceCanvas.width=sourceCanvas.height=320;cropSquare(sourceCtx,image,320);}
-  function clearResult(){const invert=$('invert').checked;resultCtx.fillStyle=invert?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,resultCanvas.width,resultCanvas.height);$('empty').style.display='grid';$('statThreads').textContent='–';$('statNails').textContent='–';$('statTime').textContent='–';$('statLast').textContent='–';}
-  function makeNails(count,size,margin=4){const c=(size-1)/2,r=c-margin,pts=new Array(count);for(let i=0;i<count;i++){const a=-Math.PI/2+i*Math.PI*2/count;pts[i]={x:c+Math.cos(a)*r,y:c+Math.sin(a)*r};}return pts;}
-  function prepareTarget(size){const c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d',{willReadFrequently:true});cropSquare(ctx,image,size);const data=ctx.getImageData(0,0,size,size).data,darkness=new Float32Array(size*size),mid=(size-1)/2,radius=mid-2,r2=radius*radius;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const idx=y*size+x,p=idx*4;if((x-mid)*(x-mid)+(y-mid)*(y-mid)>r2){darkness[idx]=0;continue;}const alpha=data[p+3]/255,lum=(0.2126*data[p]+0.7152*data[p+1]+0.0722*data[p+2])/255;darkness[idx]=(1-lum)*alpha;}return darkness;}
-  function rasterLine(a,b,size){const dx=b.x-a.x,dy=b.y-a.y,steps=Math.max(2,Math.ceil(Math.hypot(dx,dy))),out=new Int32Array(steps+1);let used=0,last=-1;for(let i=0;i<=steps;i++){const t=i/steps,x=Math.max(0,Math.min(size-1,Math.round(a.x+dx*t))),y=Math.max(0,Math.min(size-1,Math.round(a.y+dy*t))),idx=y*size+x;if(idx!==last){out[used++]=idx;last=idx;}}return out.subarray(0,used);}
-  const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-
-  async function calculate(){
-    if(!image||computing)return;cancelled=false;setBusy(true);sequence=[];const t0=performance.now(),nailCount=+$('nails').value,threadCount=+$('threads').value,size=+$('sampleSize').value,residual=prepareTarget(size),nails=makeNails(nailCount,size,5),minGap=Math.max(3,Math.round(nailCount*.035)),lineStrength=Math.max(.025,Math.min(.18,+$('opacity').value*1.15)),lineCache=new Map(),cacheKey=(a,b)=>a<b?a*nailCount+b:b*nailCount+a;
-    const getLine=(a,b)=>{const key=cacheKey(a,b);let line=lineCache.get(key);if(!line){line=rasterLine(nails[a],nails[b],size);lineCache.set(key,line);}return line;};
-    const circularGap=(a,b)=>Math.min((a-b+nailCount)%nailCount,(b-a+nailCount)%nailCount);
-    let current=0,previous=-1;sequence=[current];$('progress').hidden=false;$('progress').value=0;setStatus('Analysiere mögliche Fadenwege …');
-    for(let step=0;step<threadCount;step++){
-      if(cancelled)break;let best=-1,bestScore=-Infinity,bestLine=null;
-      for(let candidate=0;candidate<nailCount;candidate++){
-        if(candidate===current||candidate===previous||circularGap(current,candidate)<minGap)continue;
-        const line=getLine(current,candidate);let score=0,trim=Math.min(3,Math.floor(line.length/8));for(let k=trim;k<line.length-trim;k++)score+=residual[line[k]];score/=Math.max(1,line.length-trim*2);score*=Math.min(1,line.length/(size*.45));if(score>bestScore){bestScore=score;best=candidate;bestLine=line;}
-      }
-      if(best<0||!bestLine)break;for(let k=0;k<bestLine.length;k++){const idx=bestLine[k];residual[idx]=Math.max(-.35,residual[idx]-lineStrength);}previous=current;current=best;sequence.push(current);
-      if(step%20===0||step===threadCount-1){$('progress').value=(step+1)/threadCount;setStatus(`Berechne Faden ${(step+1).toLocaleString('de-DE')} von ${threadCount.toLocaleString('de-DE')} …`);if(step%100===0){lastSettings={nailCount};nailPositions=makeNails(nailCount,resultCanvas.width,34);drawResult(Math.min(sequence.length-1,step+1));await tick();}}
-    }
-    lastSettings={nailCount};nailPositions=makeNails(nailCount,resultCanvas.width,34);drawResult();const secs=(performance.now()-t0)/1000;$('statThreads').textContent=Math.max(0,sequence.length-1).toLocaleString('de-DE');$('statNails').textContent=nailCount.toLocaleString('de-DE');$('statTime').textContent=secs<10?secs.toFixed(1)+' s':Math.round(secs)+' s';$('statLast').textContent=sequence.length?sequence[sequence.length-1]:'–';$('progress').hidden=true;setBusy(false);setStatus(cancelled?`Abgebrochen – ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden bleiben sichtbar.`:`Fertig. ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden berechnet.`);
-  }
-
-  function drawResult(limit){if(!sequence.length||!lastSettings)return;$('empty').style.display='none';const size=resultCanvas.width,invert=$('invert').checked;resultCtx.save();resultCtx.fillStyle=invert?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,size,size);resultCtx.strokeStyle=invert?'#fff':'#000';resultCtx.globalAlpha=+$('opacity').value;resultCtx.lineWidth=+$('lineWidth').value;resultCtx.lineCap='round';const upto=Math.min(sequence.length-1,limit==null?sequence.length-1:limit);for(let i=0;i<upto;i++){const a=nailPositions[sequence[i]],b=nailPositions[sequence[i+1]];resultCtx.beginPath();resultCtx.moveTo(a.x,a.y);resultCtx.lineTo(b.x,b.y);resultCtx.stroke();}resultCtx.globalAlpha=1;if($('showNails').checked){resultCtx.fillStyle=invert?'#eee':'#111';const r=Math.max(1.2,Math.min(2.5,260/lastSettings.nailCount));for(const p of nailPositions){resultCtx.beginPath();resultCtx.arc(p.x,p.y,r,0,Math.PI*2);resultCtx.fill();}}resultCtx.restore();}
-  $('generate').addEventListener('click',calculate);$('redraw').addEventListener('click',()=>drawResult());$('cancel').addEventListener('click',()=>{cancelled=true;setStatus('Breche nach dem aktuellen Berechnungsschritt ab …');});clearResult();
+(()=>{'use strict';
+const $=id=>document.getElementById(id),fileInput=$('fileInput'),dropZone=$('dropZone'),resultCanvas=$('result'),resultCtx=resultCanvas.getContext('2d'),sourceCanvas=$('source'),sourceCtx=sourceCanvas.getContext('2d',{willReadFrequently:true}),processedCanvas=$('processed'),processedCtx=processedCanvas.getContext('2d',{willReadFrequently:true});
+let image=null,imageURL=null,sequence=[],nailPositions=[],cancelled=false,computing=false,lastSettings=null;
+const controls=['contrast','gamma','blackPoint','whitePoint','edgeBias','nails','threads','sampleSize','penalty','lineWidth','opacity'];
+const fmt={contrast:v:Number(v).toFixed(2)+'×',gamma:v:Number(v).toFixed(2),blackPoint:v:Math.round(v*100)+'%',whitePoint:v:Math.round(v*100)+'%',edgeBias:v:Number(v).toFixed(2),nails:v=>v,threads:v=>v,sampleSize:v=>v+' px',penalty:v=>Number(v).toFixed(1)+'×',lineWidth:v=>Number(v).toFixed(2)+' px',opacity:v=>Math.round(v*100)+'%'};
+const preprocessIds=new Set(['contrast','gamma','blackPoint','whitePoint','edgeBias']);
+controls.forEach(id=>{const el=$(id),out=$(id+'Value');const sync=()=>{out.textContent=fmt[id](el.value);if(preprocessIds.has(id)&&image)drawProcessedPreview();if((id==='lineWidth'||id==='opacity')&&sequence.length)drawResult();};el.addEventListener('input',sync);sync();});
+$('showNails').addEventListener('change',()=>sequence.length&&drawResult());$('invert').addEventListener('change',()=>sequence.length&&drawResult());
+function setStatus(t){$('status').textContent=t}function setBusy(b){computing=b;$('generate').disabled=!image||b;$('redraw').disabled=!sequence.length||b;$('cancel').disabled=!b;['nails','threads','sampleSize','penalty'].forEach(id=>$(id).disabled=b)}
+function loadFile(file){if(!file)return;setStatus('Bild wird geladen …');if(imageURL)URL.revokeObjectURL(imageURL);imageURL=URL.createObjectURL(file);const img=new Image();img.onload=()=>{image=img;sequence=[];drawSourcePreview();drawProcessedPreview();clearResult();$('generate').disabled=false;$('redraw').disabled=true;setStatus(`${img.naturalWidth} × ${img.naturalHeight}px geladen.`)};img.onerror=()=>{image=null;$('generate').disabled=true;setStatus('Bild konnte nicht gelesen werden. HEIC ggf. als JPEG/PNG exportieren.')};img.src=imageURL}
+fileInput.addEventListener('change',e=>{loadFile(e.target.files&&e.target.files[0]);e.target.value=''});['dragenter','dragover'].forEach(t=>dropZone.addEventListener(t,e=>{e.preventDefault()}));dropZone.addEventListener('drop',e=>{e.preventDefault();loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0])});
+function cropSquare(ctx,img,size){const sw=Math.min(img.naturalWidth,img.naturalHeight),sx=(img.naturalWidth-sw)/2,sy=(img.naturalHeight-sw)/2;ctx.clearRect(0,0,size,size);ctx.drawImage(img,sx,sy,sw,sw,0,0,size,size)}
+function getParams(){return{contrast:+$('contrast').value,gamma:+$('gamma').value,black:+$('blackPoint').value,white:+$('whitePoint').value,edge:+$('edgeBias').value}}
+function buildTarget(size,needImage=false){const c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d',{willReadFrequently:true});cropSquare(ctx,image,size);const src=ctx.getImageData(0,0,size,size),d=src.data,p=getParams(),lum=new Float32Array(size*size),target=new Float32Array(size*size),mid=(size-1)/2,radius=mid-2,r2=radius*radius;
+for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=y*size+x,k=i*4;let l=(.2126*d[k]+.7152*d[k+1]+.0722*d[k+2])/255;l=(l-p.black)/Math.max(.01,p.white-p.black);l=Math.max(0,Math.min(1,l));l=Math.pow(l,p.gamma);l=(l-.5)*p.contrast+.5;lum[i]=Math.max(0,Math.min(1,l));}
+for(let y=0;y<size;y++)for(let x=0;x<size;x++){const i=y*size+x;if((x-mid)*(x-mid)+(y-mid)*(y-mid)>r2){target[i]=0;continue}let edge=0;if(x>0&&x<size-1&&y>0&&y<size-1){const gx=lum[i+1]-lum[i-1],gy=lum[i+size]-lum[i-size];edge=Math.min(1,Math.hypot(gx,gy)*3)}target[i]=Math.max(0,Math.min(1,(1-lum[i])+edge*p.edge));}
+if(needImage){const out=ctx.createImageData(size,size);for(let i=0;i<target.length;i++){const v=Math.round((1-target[i])*255),k=i*4;out.data[k]=out.data[k+1]=out.data[k+2]=v;out.data[k+3]=255}return{target,imageData:out}}return{target}}
+function drawSourcePreview(){sourceCanvas.width=sourceCanvas.height=320;cropSquare(sourceCtx,image,320)}function drawProcessedPreview(){processedCanvas.width=processedCanvas.height=320;const o=buildTarget(320,true);processedCtx.putImageData(o.imageData,0,0)}
+function clearResult(){resultCtx.fillStyle=$('invert').checked?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,900,900);$('empty').style.display='grid';['statThreads','statNails','statTime','statLast'].forEach(id=>$(id).textContent='–')}
+function makeNails(count,size,margin=4){const c=(size-1)/2,r=c-margin,pts=[];for(let i=0;i<count;i++){const a=-Math.PI/2+i*Math.PI*2/count;pts.push({x:c+Math.cos(a)*r,y:c+Math.sin(a)*r})}return pts}
+function rasterLine(a,b,size){const dx=b.x-a.x,dy=b.y-a.y,steps=Math.max(2,Math.ceil(Math.hypot(dx,dy))),out=new Int32Array(steps+1);let used=0,last=-1;for(let i=0;i<=steps;i++){const t=i/steps,x=Math.max(0,Math.min(size-1,Math.round(a.x+dx*t))),y=Math.max(0,Math.min(size-1,Math.round(a.y+dy*t))),idx=y*size+x;if(idx!==last){out[used++]=idx;last=idx}}return out.subarray(0,used)}const tick=()=>new Promise(r=>setTimeout(r,0));
+async function calculate(){if(!image||computing)return;cancelled=false;setBusy(true);sequence=[];const t0=performance.now(),nailCount=+$('nails').value,threadCount=+$('threads').value,size=+$('sampleSize').value,target=buildTarget(size).target,currentDark=new Float32Array(size*size),nails=makeNails(nailCount,size,5),minGap=Math.max(3,Math.round(nailCount*.035)),strength=Math.max(.025,Math.min(.18,+$('opacity').value*1.15)),penalty=+$('penalty').value,cache=new Map(),key=(a,b)=>a<b?a*nailCount+b:b*nailCount+a,getLine=(a,b)=>{const k=key(a,b);let l=cache.get(k);if(!l){l=rasterLine(nails[a],nails[b],size);cache.set(k,l)}return l},gap=(a,b)=>Math.min((a-b+nailCount)%nailCount,(b-a+nailCount)%nailCount);
+let current=0,previous=-1;sequence=[0];$('progress').hidden=false;$('progress').value=0;setStatus('Berechne Fadensequenz …');
+for(let step=0;step<threadCount;step++){if(cancelled)break;let best=-1,bestScore=-Infinity,bestLine=null;for(let cand=0;cand<nailCount;cand++){if(cand===current||cand===previous||gap(current,cand)<minGap)continue;const line=getLine(current,cand),trim=Math.min(3,Math.floor(line.length/8));let improve=0,worsen=0,n=0;for(let k=trim;k<line.length-trim;k++){const idx=line[k],before=Math.abs(target[idx]-currentDark[idx]),after=Math.abs(target[idx]-Math.min(1,currentDark[idx]+strength)),delta=before-after;if(delta>=0)improve+=delta;else worsen-=delta;n++}let score=(improve-penalty*worsen)/Math.max(1,n);score*=Math.min(1,line.length/(size*.42));if(score>bestScore){bestScore=score;best=cand;bestLine=line}}
+if(best<0||!bestLine||bestScore<=0)break;for(let k=0;k<bestLine.length;k++){const idx=bestLine[k];currentDark[idx]=Math.min(1.2,currentDark[idx]+strength)}previous=current;current=best;sequence.push(current);
+if(step%20===0||step===threadCount-1){$('progress').value=(step+1)/threadCount;setStatus(`Faden ${(step+1).toLocaleString('de-DE')} / ${threadCount.toLocaleString('de-DE')}`);if(step%100===0){lastSettings={nailCount};nailPositions=makeNails(nailCount,900,34);drawResult();await tick()}}}
+lastSettings={nailCount};nailPositions=makeNails(nailCount,900,34);drawResult();const secs=(performance.now()-t0)/1000;$('statThreads').textContent=Math.max(0,sequence.length-1).toLocaleString('de-DE');$('statNails').textContent=nailCount;$('statTime').textContent=secs<10?secs.toFixed(1)+' s':Math.round(secs)+' s';$('statLast').textContent=sequence.length?sequence[sequence.length-1]:'–';$('progress').hidden=true;setBusy(false);setStatus(cancelled?'Abgebrochen.':`Fertig – ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} sinnvolle Fäden.`)}
+function drawResult(){if(!sequence.length||!lastSettings)return;$('empty').style.display='none';const inv=$('invert').checked;resultCtx.fillStyle=inv?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,900,900);resultCtx.save();resultCtx.strokeStyle=inv?'#fff':'#000';resultCtx.globalAlpha=+$('opacity').value;resultCtx.lineWidth=+$('lineWidth').value;resultCtx.lineCap='round';for(let i=0;i<sequence.length-1;i++){const a=nailPositions[sequence[i]],b=nailPositions[sequence[i+1]];resultCtx.beginPath();resultCtx.moveTo(a.x,a.y);resultCtx.lineTo(b.x,b.y);resultCtx.stroke()}resultCtx.globalAlpha=1;if($('showNails').checked){resultCtx.fillStyle=inv?'#eee':'#111';const r=Math.max(1.2,Math.min(2.5,260/lastSettings.nailCount));for(const p of nailPositions){resultCtx.beginPath();resultCtx.arc(p.x,p.y,r,0,Math.PI*2);resultCtx.fill()}}resultCtx.restore()}
+$('generate').addEventListener('click',calculate);$('redraw').addEventListener('click',drawResult);$('cancel').addEventListener('click',()=>{cancelled=true;setStatus('Breche ab …')});clearResult();
 })();
 </script>
-</body>
-</html>
+</body></html>
