@@ -18,10 +18,10 @@
     .panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 32px rgba(0,0,0,.05)}
     .panel{padding:18px;position:sticky;top:16px}
     .stage{padding:14px;min-height:500px}
-    .drop{border:1.5px dashed var(--line);border-radius:14px;padding:18px;text-align:center;cursor:pointer;transition:.15s;background:rgba(127,127,127,.035)}
+    .drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;padding:18px;text-align:center;cursor:pointer;transition:.15s;background:rgba(127,127,127,.035);overflow:hidden;min-height:78px;display:grid;place-items:center}
     .drop.drag{transform:scale(1.01);border-color:var(--text)}
     .drop strong{display:block;margin-bottom:4px}.drop small{color:var(--muted)}
-    input[type=file]{display:none}
+    .fileInput{position:absolute;inset:0;width:100%;height:100%;opacity:.001;cursor:pointer;font-size:100px}
     .group{margin-top:18px}.group h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 12px}
     .control{margin:0 0 15px}.labelrow{display:flex;justify-content:space-between;gap:12px;margin-bottom:6px;font-size:14px}.value{font-variant-numeric:tabular-nums;color:var(--muted)}
     input[type=range]{width:100%;accent-color:var(--accent)}
@@ -52,71 +52,34 @@
 
   <div class="layout">
     <aside class="panel">
-      <label class="drop" id="dropZone">
-        <input type="file" id="fileInput" accept="image/*">
-        <strong>Bild auswählen</strong>
-        <small>oder hier hineinziehen</small>
-      </label>
+      <div class="drop" id="dropZone">
+        <input class="fileInput" type="file" id="fileInput" accept="image/*,.heic,.heif">
+        <div><strong>Bild auswählen</strong><small>Foto antippen oder hineinziehen</small></div>
+      </div>
 
       <div class="group">
         <h2>Berechnung</h2>
-        <div class="control">
-          <div class="labelrow"><label for="nails">Nägel</label><span class="value" id="nailsValue">180</span></div>
-          <input id="nails" type="range" min="40" max="320" step="10" value="180">
-        </div>
-        <div class="control">
-          <div class="labelrow"><label for="threads">Fäden</label><span class="value" id="threadsValue">1800</span></div>
-          <input id="threads" type="range" min="100" max="5000" step="100" value="1800">
-        </div>
-        <div class="control">
-          <div class="labelrow"><label for="sampleSize">Analyseauflösung</label><span class="value" id="sampleSizeValue">260 px</span></div>
-          <input id="sampleSize" type="range" min="140" max="380" step="20" value="260">
-        </div>
+        <div class="control"><div class="labelrow"><label for="nails">Nägel</label><span class="value" id="nailsValue">180</span></div><input id="nails" type="range" min="40" max="320" step="10" value="180"></div>
+        <div class="control"><div class="labelrow"><label for="threads">Fäden</label><span class="value" id="threadsValue">1800</span></div><input id="threads" type="range" min="100" max="5000" step="100" value="1800"></div>
+        <div class="control"><div class="labelrow"><label for="sampleSize">Analyseauflösung</label><span class="value" id="sampleSizeValue">260 px</span></div><input id="sampleSize" type="range" min="140" max="380" step="20" value="260"></div>
       </div>
 
       <div class="group">
         <h2>Darstellung</h2>
-        <div class="control">
-          <div class="labelrow"><label for="lineWidth">Fadenstärke</label><span class="value" id="lineWidthValue">0.45 px</span></div>
-          <input id="lineWidth" type="range" min="0.15" max="2" step="0.05" value="0.45">
-        </div>
-        <div class="control">
-          <div class="labelrow"><label for="opacity">Fadendichte</label><span class="value" id="opacityValue">8%</span></div>
-          <input id="opacity" type="range" min="0.02" max="0.22" step="0.01" value="0.08">
-        </div>
-        <div class="checks">
-          <label><input type="checkbox" id="showNails" checked> Nägel anzeigen</label>
-          <label><input type="checkbox" id="invert"> Helles Motiv auf dunklem Grund</label>
-        </div>
+        <div class="control"><div class="labelrow"><label for="lineWidth">Fadenstärke</label><span class="value" id="lineWidthValue">0.45 px</span></div><input id="lineWidth" type="range" min="0.15" max="2" step="0.05" value="0.45"></div>
+        <div class="control"><div class="labelrow"><label for="opacity">Fadendichte</label><span class="value" id="opacityValue">8%</span></div><input id="opacity" type="range" min="0.02" max="0.22" step="0.01" value="0.08"></div>
+        <div class="checks"><label><input type="checkbox" id="showNails" checked> Nägel anzeigen</label><label><input type="checkbox" id="invert"> Helles Motiv auf dunklem Grund</label></div>
       </div>
 
-      <div class="buttons">
-        <button class="primary" id="generate" disabled>Sequenz berechnen</button>
-        <button id="redraw" disabled>Neu zeichnen</button>
-        <button id="cancel" disabled>Abbrechen</button>
-      </div>
+      <div class="buttons"><button class="primary" id="generate" disabled>Sequenz berechnen</button><button id="redraw" disabled>Neu zeichnen</button><button id="cancel" disabled>Abbrechen</button></div>
       <div class="status" id="status">Zuerst ein Bild auswählen.</div>
       <progress id="progress" max="1" value="0" hidden></progress>
     </aside>
 
     <main class="stage">
       <div class="canvasWrap">
-        <div class="mainCanvasBox">
-          <canvas id="result" width="900" height="900"></canvas>
-          <div class="empty" id="empty"><div><strong>Noch kein Thread-Art-Ergebnis</strong>Bild laden und „Sequenz berechnen“ wählen.</div></div>
-        </div>
-        <div class="previewBox">
-          <div class="previewInner">
-            <h3>Vorlage</h3>
-            <canvas id="source" width="320" height="320"></canvas>
-            <div class="stats">
-              <div>Sequenz<b id="statThreads">–</b></div>
-              <div>Nägel<b id="statNails">–</b></div>
-              <div>Berechnet<b id="statTime">–</b></div>
-              <div>Letzter Nagel<b id="statLast">–</b></div>
-            </div>
-          </div>
-        </div>
+        <div class="mainCanvasBox"><canvas id="result" width="900" height="900"></canvas><div class="empty" id="empty"><div><strong>Noch kein Thread-Art-Ergebnis</strong>Bild laden und „Sequenz berechnen“ wählen.</div></div></div>
+        <div class="previewBox"><div class="previewInner"><h3>Vorlage</h3><canvas id="source" width="320" height="320"></canvas><div class="stats"><div>Sequenz<b id="statThreads">–</b></div><div>Nägel<b id="statNails">–</b></div><div>Berechnet<b id="statTime">–</b></div><div>Letzter Nagel<b id="statLast">–</b></div></div></div></div>
       </div>
     </main>
   </div>
@@ -125,241 +88,66 @@
 <script>
 (() => {
   'use strict';
-
   const $ = id => document.getElementById(id);
-  const fileInput = $('fileInput');
-  const dropZone = $('dropZone');
-  const resultCanvas = $('result');
-  const resultCtx = resultCanvas.getContext('2d');
-  const sourceCanvas = $('source');
-  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently:true });
-
-  let image = null;
-  let sequence = [];
-  let nailPositions = [];
-  let cancelled = false;
-  let computing = false;
-  let lastSettings = null;
-
-  const controls = ['nails','threads','sampleSize','lineWidth','opacity'];
-  const formatters = {
-    nails: v => v,
-    threads: v => v,
-    sampleSize: v => v + ' px',
-    lineWidth: v => Number(v).toFixed(2) + ' px',
-    opacity: v => Math.round(v * 100) + '%'
-  };
-  controls.forEach(id => {
-    const el = $(id), out = $(id+'Value');
-    const sync = () => { out.textContent = formatters[id](el.value); if ((id==='lineWidth'||id==='opacity') && sequence.length) drawResult(); };
-    el.addEventListener('input', sync); sync();
-  });
-  $('showNails').addEventListener('change', () => sequence.length && drawResult());
-  $('invert').addEventListener('change', () => sequence.length && drawResult());
-
-  function setStatus(text){ $('status').textContent = text; }
-  function setBusy(busy){
-    computing = busy;
-    $('generate').disabled = !image || busy;
-    $('redraw').disabled = !sequence.length || busy;
-    $('cancel').disabled = !busy;
-    controls.forEach(id => $(id).disabled = busy && ['nails','threads','sampleSize'].includes(id));
-  }
+  const fileInput=$('fileInput'), dropZone=$('dropZone'), resultCanvas=$('result'), resultCtx=resultCanvas.getContext('2d'), sourceCanvas=$('source'), sourceCtx=sourceCanvas.getContext('2d',{willReadFrequently:true});
+  let image=null, imageURL=null, sequence=[], nailPositions=[], cancelled=false, computing=false, lastSettings=null;
+  const controls=['nails','threads','sampleSize','lineWidth','opacity'];
+  const formatters={nails:v=>v,threads:v=>v,sampleSize:v=>v+' px',lineWidth:v=>Number(v).toFixed(2)+' px',opacity:v=>Math.round(v*100)+'%'};
+  controls.forEach(id=>{const el=$(id),out=$(id+'Value');const sync=()=>{out.textContent=formatters[id](el.value);if((id==='lineWidth'||id==='opacity')&&sequence.length)drawResult();};el.addEventListener('input',sync);sync();});
+  $('showNails').addEventListener('change',()=>sequence.length&&drawResult());
+  $('invert').addEventListener('change',()=>sequence.length&&drawResult());
+  function setStatus(text){$('status').textContent=text;}
+  function setBusy(busy){computing=busy;$('generate').disabled=!image||busy;$('redraw').disabled=!sequence.length||busy;$('cancel').disabled=!busy;controls.forEach(id=>$(id).disabled=busy&&['nails','threads','sampleSize'].includes(id));}
 
   function loadFile(file){
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        image = img;
-        sequence = [];
-        drawSourcePreview();
-        clearResult();
-        $('generate').disabled = false;
-        $('redraw').disabled = true;
-        setStatus(`${img.naturalWidth} × ${img.naturalHeight}px geladen. Bereit zur Berechnung.`);
-      };
-      img.src = e.target.result;
+    if(!file)return;
+    setStatus('Bild wird geladen …');
+    if(imageURL){URL.revokeObjectURL(imageURL);imageURL=null;}
+    imageURL=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      image=img;sequence=[];drawSourcePreview();clearResult();$('generate').disabled=false;$('redraw').disabled=true;
+      setStatus(`${img.naturalWidth} × ${img.naturalHeight}px geladen. Bereit zur Berechnung.`);
     };
-    reader.readAsDataURL(file);
+    img.onerror=()=>{
+      image=null;$('generate').disabled=true;
+      setStatus('Das ausgewählte Bild konnte nicht gelesen werden. Bei HEIC bitte ggf. als JPEG/PNG exportieren.');
+    };
+    img.src=imageURL;
   }
 
-  fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
-  ['dragenter','dragover'].forEach(type => dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.add('drag'); }));
-  ['dragleave','drop'].forEach(type => dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.remove('drag'); }));
-  dropZone.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
+  fileInput.addEventListener('change',e=>{const file=e.target.files&&e.target.files[0];loadFile(file);e.target.value='';});
+  ['dragenter','dragover'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.add('drag');}));
+  ['dragleave','drop'].forEach(type=>dropZone.addEventListener(type,e=>{e.preventDefault();dropZone.classList.remove('drag');}));
+  dropZone.addEventListener('drop',e=>loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]));
 
-  function cropSquare(ctx, img, size){
-    const sw = Math.min(img.naturalWidth, img.naturalHeight);
-    const sx = (img.naturalWidth - sw) / 2;
-    const sy = (img.naturalHeight - sw) / 2;
-    ctx.clearRect(0,0,size,size);
-    ctx.drawImage(img, sx, sy, sw, sw, 0,0,size,size);
-  }
-
-  function drawSourcePreview(){
-    sourceCanvas.width = sourceCanvas.height = 320;
-    cropSquare(sourceCtx, image, 320);
-  }
-
-  function clearResult(){
-    const invert = $('invert').checked;
-    resultCtx.fillStyle = invert ? '#0b0b0b' : '#fff';
-    resultCtx.fillRect(0,0,resultCanvas.width,resultCanvas.height);
-    $('empty').style.display = 'grid';
-    $('statThreads').textContent = '–'; $('statNails').textContent = '–'; $('statTime').textContent = '–'; $('statLast').textContent = '–';
-  }
-
-  function makeNails(count, size, margin=4){
-    const c = (size-1)/2, r = c-margin;
-    const pts = new Array(count);
-    for(let i=0;i<count;i++){
-      const a = -Math.PI/2 + i * Math.PI*2/count;
-      pts[i] = {x:c + Math.cos(a)*r, y:c + Math.sin(a)*r};
-    }
-    return pts;
-  }
-
-  function prepareTarget(size){
-    const c = document.createElement('canvas'); c.width=c.height=size;
-    const ctx = c.getContext('2d',{willReadFrequently:true});
-    cropSquare(ctx,image,size);
-    const data = ctx.getImageData(0,0,size,size).data;
-    const darkness = new Float32Array(size*size);
-    const mid=(size-1)/2, radius=mid-2, r2=radius*radius;
-    for(let y=0;y<size;y++) for(let x=0;x<size;x++){
-      const idx=y*size+x, p=idx*4;
-      if((x-mid)*(x-mid)+(y-mid)*(y-mid)>r2){ darkness[idx]=0; continue; }
-      const alpha=data[p+3]/255;
-      const lum=(0.2126*data[p]+0.7152*data[p+1]+0.0722*data[p+2])/255;
-      darkness[idx]=(1-lum)*alpha;
-    }
-    return darkness;
-  }
-
-  function rasterLine(a,b,size){
-    const dx=b.x-a.x, dy=b.y-a.y;
-    const steps=Math.max(2,Math.ceil(Math.hypot(dx,dy)));
-    const out=new Int32Array(steps+1);
-    let used=0,last=-1;
-    for(let i=0;i<=steps;i++){
-      const t=i/steps;
-      const x=Math.max(0,Math.min(size-1,Math.round(a.x+dx*t)));
-      const y=Math.max(0,Math.min(size-1,Math.round(a.y+dy*t)));
-      const idx=y*size+x;
-      if(idx!==last){out[used++]=idx;last=idx;}
-    }
-    return out.subarray(0,used);
-  }
-
-  const tick = () => new Promise(resolve => setTimeout(resolve,0));
+  function cropSquare(ctx,img,size){const sw=Math.min(img.naturalWidth,img.naturalHeight),sx=(img.naturalWidth-sw)/2,sy=(img.naturalHeight-sw)/2;ctx.clearRect(0,0,size,size);ctx.drawImage(img,sx,sy,sw,sw,0,0,size,size);}
+  function drawSourcePreview(){sourceCanvas.width=sourceCanvas.height=320;cropSquare(sourceCtx,image,320);}
+  function clearResult(){const invert=$('invert').checked;resultCtx.fillStyle=invert?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,resultCanvas.width,resultCanvas.height);$('empty').style.display='grid';$('statThreads').textContent='–';$('statNails').textContent='–';$('statTime').textContent='–';$('statLast').textContent='–';}
+  function makeNails(count,size,margin=4){const c=(size-1)/2,r=c-margin,pts=new Array(count);for(let i=0;i<count;i++){const a=-Math.PI/2+i*Math.PI*2/count;pts[i]={x:c+Math.cos(a)*r,y:c+Math.sin(a)*r};}return pts;}
+  function prepareTarget(size){const c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d',{willReadFrequently:true});cropSquare(ctx,image,size);const data=ctx.getImageData(0,0,size,size).data,darkness=new Float32Array(size*size),mid=(size-1)/2,radius=mid-2,r2=radius*radius;for(let y=0;y<size;y++)for(let x=0;x<size;x++){const idx=y*size+x,p=idx*4;if((x-mid)*(x-mid)+(y-mid)*(y-mid)>r2){darkness[idx]=0;continue;}const alpha=data[p+3]/255,lum=(0.2126*data[p]+0.7152*data[p+1]+0.0722*data[p+2])/255;darkness[idx]=(1-lum)*alpha;}return darkness;}
+  function rasterLine(a,b,size){const dx=b.x-a.x,dy=b.y-a.y,steps=Math.max(2,Math.ceil(Math.hypot(dx,dy))),out=new Int32Array(steps+1);let used=0,last=-1;for(let i=0;i<=steps;i++){const t=i/steps,x=Math.max(0,Math.min(size-1,Math.round(a.x+dx*t))),y=Math.max(0,Math.min(size-1,Math.round(a.y+dy*t))),idx=y*size+x;if(idx!==last){out[used++]=idx;last=idx;}}return out.subarray(0,used);}
+  const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 
   async function calculate(){
-    if(!image || computing) return;
-    cancelled=false; setBusy(true); sequence=[];
-    const t0=performance.now();
-    const nailCount=+$('nails').value;
-    const threadCount=+$('threads').value;
-    const size=+$('sampleSize').value;
-    const residual=prepareTarget(size);
-    const nails=makeNails(nailCount,size,5);
-    const minGap=Math.max(3,Math.round(nailCount*0.035));
-    const lineStrength=Math.max(.025,Math.min(.18,+$('opacity').value*1.15));
-    const lineCache=new Map();
-    const cacheKey=(a,b)=>a<b?a*nailCount+b:b*nailCount+a;
-    const getLine=(a,b)=>{
-      const key=cacheKey(a,b);
-      let line=lineCache.get(key);
-      if(!line){ line=rasterLine(nails[a],nails[b],size); lineCache.set(key,line); }
-      return line;
-    };
+    if(!image||computing)return;cancelled=false;setBusy(true);sequence=[];const t0=performance.now(),nailCount=+$('nails').value,threadCount=+$('threads').value,size=+$('sampleSize').value,residual=prepareTarget(size),nails=makeNails(nailCount,size,5),minGap=Math.max(3,Math.round(nailCount*.035)),lineStrength=Math.max(.025,Math.min(.18,+$('opacity').value*1.15)),lineCache=new Map(),cacheKey=(a,b)=>a<b?a*nailCount+b:b*nailCount+a;
+    const getLine=(a,b)=>{const key=cacheKey(a,b);let line=lineCache.get(key);if(!line){line=rasterLine(nails[a],nails[b],size);lineCache.set(key,line);}return line;};
     const circularGap=(a,b)=>Math.min((a-b+nailCount)%nailCount,(b-a+nailCount)%nailCount);
-
-    let current=0, previous=-1;
-    sequence=[current];
-    $('progress').hidden=false; $('progress').value=0;
-    setStatus('Analysiere mögliche Fadenwege …');
-
+    let current=0,previous=-1;sequence=[current];$('progress').hidden=false;$('progress').value=0;setStatus('Analysiere mögliche Fadenwege …');
     for(let step=0;step<threadCount;step++){
-      if(cancelled) break;
-      let best=-1,bestScore=-Infinity,bestLine=null;
+      if(cancelled)break;let best=-1,bestScore=-Infinity,bestLine=null;
       for(let candidate=0;candidate<nailCount;candidate++){
-        if(candidate===current || candidate===previous || circularGap(current,candidate)<minGap) continue;
-        const line=getLine(current,candidate);
-        let score=0;
-        // Endpunkte etwas geringer gewichten: Nägel selbst sollen die Wahl nicht dominieren.
-        const trim=Math.min(3,Math.floor(line.length/8));
-        for(let k=trim;k<line.length-trim;k++) score += residual[line[k]];
-        score /= Math.max(1,line.length-trim*2);
-        // Sehr kurze Chords leicht bestrafen.
-        score *= Math.min(1,line.length/(size*.45));
-        if(score>bestScore){bestScore=score;best=candidate;bestLine=line;}
+        if(candidate===current||candidate===previous||circularGap(current,candidate)<minGap)continue;
+        const line=getLine(current,candidate);let score=0,trim=Math.min(3,Math.floor(line.length/8));for(let k=trim;k<line.length-trim;k++)score+=residual[line[k]];score/=Math.max(1,line.length-trim*2);score*=Math.min(1,line.length/(size*.45));if(score>bestScore){bestScore=score;best=candidate;bestLine=line;}
       }
-      if(best<0 || !bestLine) break;
-
-      for(let k=0;k<bestLine.length;k++){
-        const idx=bestLine[k];
-        residual[idx]=Math.max(-0.35,residual[idx]-lineStrength);
-      }
-      previous=current; current=best; sequence.push(current);
-
-      if(step%20===0 || step===threadCount-1){
-        const done=(step+1)/threadCount;
-        $('progress').value=done;
-        setStatus(`Berechne Faden ${step+1.toLocaleString('de-DE')} von ${threadCount.toLocaleString('de-DE')} …`);
-        if(step%100===0){
-          lastSettings={nailCount}; nailPositions=makeNails(nailCount,resultCanvas.width,34);
-          drawResult(Math.min(sequence.length-1,step+1));
-          await tick();
-        }
-      }
+      if(best<0||!bestLine)break;for(let k=0;k<bestLine.length;k++){const idx=bestLine[k];residual[idx]=Math.max(-.35,residual[idx]-lineStrength);}previous=current;current=best;sequence.push(current);
+      if(step%20===0||step===threadCount-1){$('progress').value=(step+1)/threadCount;setStatus(`Berechne Faden ${(step+1).toLocaleString('de-DE')} von ${threadCount.toLocaleString('de-DE')} …`);if(step%100===0){lastSettings={nailCount};nailPositions=makeNails(nailCount,resultCanvas.width,34);drawResult(Math.min(sequence.length-1,step+1));await tick();}}
     }
-
-    lastSettings={nailCount};
-    nailPositions=makeNails(nailCount,resultCanvas.width,34);
-    drawResult();
-    const secs=(performance.now()-t0)/1000;
-    $('statThreads').textContent=Math.max(0,sequence.length-1).toLocaleString('de-DE');
-    $('statNails').textContent=nailCount.toLocaleString('de-DE');
-    $('statTime').textContent=secs<10?secs.toFixed(1)+' s':Math.round(secs)+' s';
-    $('statLast').textContent=sequence.length?sequence.at(-1):'–';
-    $('progress').hidden=true;
-    setBusy(false);
-    setStatus(cancelled ? `Abgebrochen – ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden bleiben sichtbar.` : `Fertig. ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden berechnet.`);
+    lastSettings={nailCount};nailPositions=makeNails(nailCount,resultCanvas.width,34);drawResult();const secs=(performance.now()-t0)/1000;$('statThreads').textContent=Math.max(0,sequence.length-1).toLocaleString('de-DE');$('statNails').textContent=nailCount.toLocaleString('de-DE');$('statTime').textContent=secs<10?secs.toFixed(1)+' s':Math.round(secs)+' s';$('statLast').textContent=sequence.length?sequence[sequence.length-1]:'–';$('progress').hidden=true;setBusy(false);setStatus(cancelled?`Abgebrochen – ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden bleiben sichtbar.`:`Fertig. ${Math.max(0,sequence.length-1).toLocaleString('de-DE')} Fäden berechnet.`);
   }
 
-  function drawResult(limit){
-    if(!sequence.length || !lastSettings) return;
-    $('empty').style.display='none';
-    const size=resultCanvas.width;
-    const invert=$('invert').checked;
-    resultCtx.save();
-    resultCtx.fillStyle=invert?'#0b0b0b':'#fff';
-    resultCtx.fillRect(0,0,size,size);
-    resultCtx.strokeStyle=invert?'#fff':'#000';
-    resultCtx.globalAlpha=+$('opacity').value;
-    resultCtx.lineWidth=+$('lineWidth').value;
-    resultCtx.lineCap='round';
-    const upto=Math.min(sequence.length-1,limit ?? sequence.length-1);
-    for(let i=0;i<upto;i++){
-      const a=nailPositions[sequence[i]], b=nailPositions[sequence[i+1]];
-      resultCtx.beginPath(); resultCtx.moveTo(a.x,a.y); resultCtx.lineTo(b.x,b.y); resultCtx.stroke();
-    }
-    resultCtx.globalAlpha=1;
-    if($('showNails').checked){
-      resultCtx.fillStyle=invert?'#eee':'#111';
-      const r=Math.max(1.2,Math.min(2.5,260/lastSettings.nailCount));
-      for(const p of nailPositions){ resultCtx.beginPath(); resultCtx.arc(p.x,p.y,r,0,Math.PI*2); resultCtx.fill(); }
-    }
-    resultCtx.restore();
-  }
-
-  $('generate').addEventListener('click',calculate);
-  $('redraw').addEventListener('click',drawResult);
-  $('cancel').addEventListener('click',()=>{cancelled=true;setStatus('Breche nach dem aktuellen Berechnungsschritt ab …');});
-
-  clearResult();
+  function drawResult(limit){if(!sequence.length||!lastSettings)return;$('empty').style.display='none';const size=resultCanvas.width,invert=$('invert').checked;resultCtx.save();resultCtx.fillStyle=invert?'#0b0b0b':'#fff';resultCtx.fillRect(0,0,size,size);resultCtx.strokeStyle=invert?'#fff':'#000';resultCtx.globalAlpha=+$('opacity').value;resultCtx.lineWidth=+$('lineWidth').value;resultCtx.lineCap='round';const upto=Math.min(sequence.length-1,limit==null?sequence.length-1:limit);for(let i=0;i<upto;i++){const a=nailPositions[sequence[i]],b=nailPositions[sequence[i+1]];resultCtx.beginPath();resultCtx.moveTo(a.x,a.y);resultCtx.lineTo(b.x,b.y);resultCtx.stroke();}resultCtx.globalAlpha=1;if($('showNails').checked){resultCtx.fillStyle=invert?'#eee':'#111';const r=Math.max(1.2,Math.min(2.5,260/lastSettings.nailCount));for(const p of nailPositions){resultCtx.beginPath();resultCtx.arc(p.x,p.y,r,0,Math.PI*2);resultCtx.fill();}}resultCtx.restore();}
+  $('generate').addEventListener('click',calculate);$('redraw').addEventListener('click',()=>drawResult());$('cancel').addEventListener('click',()=>{cancelled=true;setStatus('Breche nach dem aktuellen Berechnungsschritt ab …');});clearResult();
 })();
 </script>
 </body>
