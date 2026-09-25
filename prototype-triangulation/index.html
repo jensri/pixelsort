@@ -31,9 +31,11 @@ select{width:100%;font:inherit;padding:8px;border-radius:10px;border:1px solid v
 .checks{display:grid;gap:8px;font-size:14px}.checks label{display:flex;align-items:center;gap:8px}
 .buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
 button{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:11px;padding:11px;font:inherit;font-weight:650;cursor:pointer}
+button.rec{color:#e5332a;border-color:#e5332a}
 button.primary{grid-column:1/-1;background:var(--accent);color:var(--btn);border-color:var(--accent)}
 button:disabled{opacity:.45;cursor:default}
 .modeRow{display:flex;gap:8px}.modeRow button{flex:1;padding:8px}
+.modeRow.four{display:grid;grid-template-columns:1fr 1fr}
 .modeRow button.active{background:var(--accent);color:var(--btn);border-color:var(--accent)}
 .status{margin-top:13px;color:var(--muted);font-size:13px;min-height:36px;line-height:1.4}
 .progress{height:8px;border-radius:999px;background:rgba(127,127,127,.16);overflow:hidden;margin-top:10px}
@@ -78,7 +80,8 @@ button:disabled{opacity:.45;cursor:default}
   </div>
 
   <div class="group"><h2>Füllung</h2>
-    <div class="modeRow"><button id="fillGrad" class="active">Verlauf</button><button id="fillFlat">Einfarbig</button></div>
+    <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="mosaic">Mosaik</button><button data-fill="flat">Einfarbig</button><button data-fill="poster">Poster</button></div>
+    <div class="control" id="posterCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="posterK">Farben</label><span class="value" id="posterKValue"></span></div><input id="posterK" type="range" min="3" max="32" step="1" value="8"></div>
     <div class="hint" id="fillHint"></div>
   </div>
 
@@ -90,6 +93,11 @@ button:disabled{opacity:.45;cursor:default}
       <option value="3">Zufällig (Pointillismus)</option>
       <option value="4">Fokus (Punkt antippen)</option>
       <option value="5">Vorhang (links → rechts)</option>
+      <option value="6">Hell → Dunkel (Dunkelkammer)</option>
+      <option value="7">Dunkel → Hell</option>
+      <option value="8">Farbton-Sweep (Rot → Violett)</option>
+      <option value="9">Pinsel (ins Bild malen)</option>
+      <option value="10">Iris (Kreis vom Punkt aus)</option>
     </select></div>
     <div class="control" id="detailCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="detailW">Detail-Gewicht</label><span class="value" id="detailWValue"></span></div><input id="detailW" type="range" min="0" max="100" step="5" value="50"></div>
     <div class="hint" id="strategyHint"></div>
@@ -113,6 +121,7 @@ button:disabled{opacity:.45;cursor:default}
     <button id="finish" disabled>Sofort fertig</button>
     <button id="compare" disabled>Original (halten)</button>
     <button id="download" disabled>PNG speichern</button>
+    <button id="record" disabled style="grid-column:1/-1">● Video aufnehmen</button>
   </div>
   <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
   <div class="progress"><div id="progressBar"></div></div>
@@ -157,6 +166,10 @@ let strat=0,focusX=0,focusY=0,detailW=.5;
 // flat: solid triangles. Vertices then sit on pixel CORNERS (0..W × 0..H) and every pixel centre
 // belongs to exactly one triangle (top-left rule), so a fully refined mesh is pixel-perfect too.
 let flat=false,ISV=null;
+let fill='grad';                 // grad | mosaic (centre mesh)  ·  flat | poster (corner mesh)
+let LUM=null,HUE=null,PAINT=null,PAL=null,PAL_K=0; // per-pixel brightness / hue / brush paint, poster palette
+let brushPos=null,brushDown=false,brushTimer=0;   // Pinsel
+let rec=null,recCanvas=null,recCtx=null,recChunks=[],recHold=0,recMime=''; // video export
 let lastStatT=0,meshDirty=true;
 
 /* ---------- geometry (integer coordinates → exact in doubles) ---------- */
@@ -204,9 +217,50 @@ function hPopValid(){ // returns tri id or -1
   return -1;
 }
 
-/* ---------- rasterise one triangle: paint output + find worst pixel ---------- */
+/* ---------- per-triangle error bookkeeping, shared by all fill modes ---------- */
+// strategies: 0 error · 1 details · 2 uniform · 3 random · 4 focus · 5 curtain · 6 light→dark · 7 dark→light · 8 hue · 9 brush · 10 iris
+let tSum,tBest,tBestI,tN,tAltD,tAltI,tCx,tCy,tWSum,tWBest;
+function trackReset(cx,cy){tSum=0;tBest=0;tBestI=-1;tN=0;tAltD=Infinity;tAltI=-1;tCx=cx;tCy=cy;tWSum=0;tWBest=-Infinity}
+function track(e,p,x,y){ // called for every wrong pixel p=(x,y) with error e (1…1020)
+  tSum+=e;tN++;
+  if(e>tBest){tBest=e;tBestI=p}
+  switch(strat){
+    case 2:{const dx=x-tCx,dy=y-tCy,d=dx*dx+dy*dy;if(d<tAltD){tAltD=d;tAltI=p}break} // nearest the centroid
+    case 3:if(Math.random()*tN<1)tAltI=p;break;                                        // uniformly random
+    case 5:if(x<tAltD)tAltD=x;break;                                                   // leftmost column
+    case 6:case 7:{const v=strat===6?LUM[p]:255-LUM[p],sc=-(v*2048+e);if(sc<tAltD){tAltD=sc;tAltI=p}break} // brightest / darkest
+    case 8:{const sc=HUE[p]*2048-e;if(sc<tAltD){tAltD=sc;tAltI=p}break}               // earliest hue
+    case 9:{const w=PAINT[p]*e;tWSum+=w;if(w>tWBest){tWBest=w;tAltI=p}break}             // error × paint
+    case 10:{const dx=x-focusX,dy=y-focusY,d=Math.sqrt(dx*dx+dy*dy);if(d<tAltD)tAltD=d;   // nearest the iris centre …
+      const w=Math.log(e)-d/irisR;if(w>tWBest){tWBest=w;tAltI=p}break}                  // … split where error is high but close
+  }
+}
+let irisR=1; // falloff length for the iris split point (set per image)
+function commit(t,area){
+  const sum=tSum;ERR[t]=sum;CAND[t]=tBestI;
+  if(sum===0)return;
+  // every strategy only picks wrong pixels, so each one still ends pixel-perfect
+  const ls=Math.log(sum);let key;
+  switch(strat){
+    case 1:key=detailW*Math.log(tBest)+(1-detailW)*ls*(1-1e-6)+1e-6*ls;break;  // blend of peak and total error (log domain)
+    case 2:key=area+Math.random()*.5;CAND[t]=tAltI;break;                        // largest triangle, split near its centre
+    case 3:key=Math.pow(Math.random(),1/tN);CAND[t]=tAltI;break;                 // random, weighted by number of wrong pixels
+    case 4:{const dx=tCx-focusX,dy=tCy-focusY;                                   // nearest to focus, error only as a mild factor
+      key=ls-Math.sqrt(dx*dx+dy*dy)/(.03*Math.hypot(W,H));break}
+    case 5:key=(W-tAltD)*2048+tBest;break;                                       // leftmost wrong column first, split at worst pixel
+    case 6:case 7:key=Math.floor(-tAltD/2048)+ls*.01;CAND[t]=tAltI;break;        // brightness (0…255) of its brightest/darkest wrong pixel
+    case 8:key=2000-Math.ceil(tAltD/2048)+ls*.01;CAND[t]=tAltI;break;            // hue (0…359, grey = 1000 → last)
+    case 9:if(tWSum>0){key=1000+Math.log(tWSum);CAND[t]=tAltI}else key=ls;break; // painted error first, the rest by total error
+    case 10:key=-tAltD+ls*.01;CAND[t]=tAltI;break;                               // ring grows outward from the centre
+    default:key=sum;                                                             // total error: big, wrong triangles first
+  }
+  hPush(key,t);
+}
+
+/* ---------- gradient fill: linear interpolation of the three vertex colours ---------- */
 function scanTri(t){
   if(flat)return scanFlat(t);
+  if(fill==='mosaic')return scanMosaic(t);
   const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
   const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
   const area=orient(ax,ay,bx,by,cx,cy);
@@ -217,8 +271,7 @@ function scanTri(t){
   const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
   // edge functions: w0 = orient(b,c,p) (weight of a), w1 = orient(c,a,p), w2 = orient(a,b,p)
   const e0x=by-cy,e1x=cy-ay,e2x=ay-by; // d/dx of w
-  const sx3=ax+bx+cx,sy3=ay+by+cy; // 3× centroid (integer)
-  let sum=0,best=0,bestI=-1,nErr=0,altD=Infinity,altI=-1;
+  trackReset((ax+bx+cx)/3,(ay+by+cy)/3);
   for(let y=minY;y<=maxY;y++){
     let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
     let i=(y*W+minX)*4,inside=false;
@@ -229,35 +282,46 @@ function scanTri(t){
             bb=Math.round((w0*b0+w1*b1+w2*b2)/area),al=Math.round((w0*a0+w1*a1+w2*a2)/area);
       OUT[i]=r;OUT[i+1]=g;OUT[i+2]=bb;OUT[i+3]=al;
       const e=Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3]);
-      if(e){
-        sum+=e;nErr++;
-        if(e>best){best=e;bestI=i>>2}
-        if(strat===2){const dx=3*x-sx3,dy=3*y-sy3,d=dx*dx+dy*dy;if(d<altD){altD=d;altI=i>>2}} // wrong pixel nearest the centroid
-        else if(strat===3){if(Math.random()*nErr<1)altI=i>>2}                               // uniformly random wrong pixel
-        else if(strat===5){if(x<altD)altD=x}                                                // leftmost wrong column
-      }
+      if(e)track(e,i>>2,x,y);
     }
   }
-  setKey(t,sum,best,bestI,nErr,altD,altI,area,sx3/3,sy3/3);
-}
-function setKey(t,sum,best,bestI,nErr,altD,altI,area,cenX,cenY){
-  ERR[t]=sum;CAND[t]=bestI;
-  if(sum===0)return;
-  // every strategy only picks wrong pixels, so each one still ends pixel-perfect
-  let key;
-  switch(strat){
-    case 1:key=detailW*Math.log(best)+(1-detailW)*Math.log(sum)*(1-1e-6)+1e-6*Math.log(sum);break; // blend of peak and total error (log domain)
-    case 2:key=area+Math.random()*.5;CAND[t]=altI;break;     // largest triangle, split near its centre
-    case 3:key=Math.pow(Math.random(),1/nErr);CAND[t]=altI;break; // random, weighted by number of wrong pixels
-    case 4:{const dx=cenX-focusX,dy=cenY-focusY;          // nearest to focus, error only as a mild factor
-      key=Math.log(sum)-Math.sqrt(dx*dx+dy*dy)/(.03*Math.hypot(W,H));break}
-    case 5:key=(W-altD)*2048+best;break;                     // leftmost wrong column first, split at worst pixel
-    default:key=sum;                                         // total error: big, wrong triangles first
-  }
-  hPush(key,t);
+  commit(t,area);
 }
 
-/* ---------- solid fill: mean colour of the pixel centres the triangle owns ---------- */
+/* ---------- mosaic fill: every pixel takes the colour of its nearest triangle vertex ----------
+   (a Voronoi diagram clipped to the triangles). A wrong pixel becomes a vertex and then is its own
+   nearest vertex, so this ends pixel-perfect as well. Pixel ownership must be unique here: interior
+   edges use the top-left rule, border edges belong to their only triangle, vertex pixels are painted
+   by all incident triangles (always with their own, exact colour). */
+function scanMosaic(t){
+  const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
+  const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
+  const area=orient(ax,ay,bx,by,cx,cy);
+  const ia=(ay*W+ax)*4,ib=(by*W+bx)*4,ic=(cy*W+cx)*4;
+  const tl0=N[k+1]<0||(cy-by)>0||((cy-by)===0&&(cx-bx)>0),   // edge b→c (w0)
+        tl1=N[k+2]<0||(ay-cy)>0||((ay-cy)===0&&(ax-cx)>0),   // edge c→a (w1)
+        tl2=N[k]<0||(by-ay)>0||((by-ay)===0&&(bx-ax)>0);     // edge a→b (w2)
+  const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
+  const e0x=by-cy,e1x=cy-ay,e2x=ay-by;
+  trackReset((ax+bx+cx)/3,(ay+by+cy)/3);
+  for(let y=minY;y<=maxY;y++){
+    let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
+    let i=(y*W+minX)*4,inside=false;
+    for(let x=minX;x<=maxX;x++,i+=4,w0+=e0x,w1+=e1x,w2+=e2x){
+      if(w0<0||w1<0||w2<0){if(inside)break;continue}
+      inside=true;
+      if((w0===0)+(w1===0)+(w2===0)===1&&!((w0===0&&tl0)||(w1===0&&tl1)||(w2===0&&tl2)))continue; // edge owned by the neighbour
+      const da=(x-ax)*(x-ax)+(y-ay)*(y-ay),db=(x-bx)*(x-bx)+(y-by)*(y-by),dc=(x-cx)*(x-cx)+(y-cy)*(y-cy);
+      const j=da<=db?(da<=dc?ia:ic):(db<=dc?ib:ic);
+      OUT[i]=SRC[j];OUT[i+1]=SRC[j+1];OUT[i+2]=SRC[j+2];OUT[i+3]=SRC[j+3];
+      const e=Math.abs(SRC[j]-SRC[i])+Math.abs(SRC[j+1]-SRC[i+1])+Math.abs(SRC[j+2]-SRC[i+2])+Math.abs(SRC[j+3]-SRC[i+3]);
+      if(e)track(e,i>>2,x,y);
+    }
+  }
+  commit(t,area);
+}
+
+/* ---------- solid / poster fill: one colour per triangle for the pixel centres it owns ---------- */
 function scanFlat(t){
   const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
   // doubled coordinates: corners at even, pixel centres at odd values → exact integer tests
@@ -268,32 +332,36 @@ function scanFlat(t){
   const tl0=(cy-by)>0||((cy-by)===0&&(cx-bx)>0),tl1=(ay-cy)>0||((ay-cy)===0&&(ax-cx)>0),tl2=(by-ay)>0||((by-ay)===0&&(bx-ax)>0);
   const x0=Math.min(PX[a],PX[b],PX[c]),x1=Math.max(PX[a],PX[b],PX[c])-1,y0=Math.min(PY[a],PY[b],PY[c]),y1=Math.max(PY[a],PY[b],PY[c])-1;
   const s0=2*(by-cy),s1=2*(cy-ay),s2=2*(ay-by);
-  let n=0,sr=0,sg=0,sb=0,sa=0;
+  let n=0,sr=0,sg=0,sb=0,sa=0,first=-1,uniform=true;
   for(let pass=0;pass<2;pass++){
     let mr=0,mg=0,mb=0,ma=0;
-    if(pass===1){if(n===0){ERR[t]=0;CAND[t]=-1;return}mr=Math.round(sr/n);mg=Math.round(sg/n);mb=Math.round(sb/n);ma=Math.round(sa/n)}
-    let sum=0,best=0,bestI=-1,nErr=0,altD=Infinity,altI=-1;
-    const cenX=(PX[a]+PX[b]+PX[c])/3-.5,cenY=(PY[a]+PY[b]+PY[c])/3-.5; // centroid in pixel-index coordinates
+    if(pass===1){
+      if(n===0){ERR[t]=0;CAND[t]=-1;return}
+      mr=Math.round(sr/n);mg=Math.round(sg/n);mb=Math.round(sb/n);ma=Math.round(sa/n);
+      // poster: snap to the palette unless the triangle is a single colour (then exact → guarantees the end state)
+      if(fill==='poster'&&!uniform){let bd=Infinity;
+        for(let q=0;q<PAL_K*3;q+=3){const dr=PAL[q]-mr,dg=PAL[q+1]-mg,db=PAL[q+2]-mb,d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;sr=PAL[q];sg=PAL[q+1];sb=PAL[q+2]}}
+        mr=sr;mg=sg;mb=sb}
+      trackReset((PX[a]+PX[b]+PX[c])/3-.5,(PY[a]+PY[b]+PY[c])/3-.5); // centroid in pixel-index coordinates
+    }
     for(let y=y0;y<=y1;y++){
       let w0=orient(bx,by,cx,cy,2*x0+1,2*y+1),w1=orient(cx,cy,ax,ay,2*x0+1,2*y+1),w2=orient(ax,ay,bx,by,2*x0+1,2*y+1);
       let i=(y*W+x0)*4,inside=false;
       for(let x=x0;x<=x1;x++,i+=4,w0+=s0,w1+=s1,w2+=s2){
         if(!((w0>0||(w0===0&&tl0))&&(w1>0||(w1===0&&tl1))&&(w2>0||(w2===0&&tl2)))){if(inside)break;continue}
         inside=true;
-        if(pass===0){n++;sr+=SRC[i];sg+=SRC[i+1];sb+=SRC[i+2];sa+=SRC[i+3];continue}
+        if(pass===0){
+          n++;sr+=SRC[i];sg+=SRC[i+1];sb+=SRC[i+2];sa+=SRC[i+3];
+          if(first<0)first=i;else if(uniform&&(SRC[i]!==SRC[first]||SRC[i+1]!==SRC[first+1]||SRC[i+2]!==SRC[first+2]||SRC[i+3]!==SRC[first+3]))uniform=false;
+          continue;
+        }
         OUT[i]=mr;OUT[i+1]=mg;OUT[i+2]=mb;OUT[i+3]=ma;
         const e=Math.abs(mr-SRC[i])+Math.abs(mg-SRC[i+1])+Math.abs(mb-SRC[i+2])+Math.abs(ma-SRC[i+3]);
-        if(e){
-          sum+=e;nErr++;
-          if(e>best){best=e;bestI=i>>2}
-          if(strat===2){const dx=x-cenX,dy=y-cenY,d=dx*dx+dy*dy;if(d<altD){altD=d;altI=i>>2}}
-          else if(strat===3){if(Math.random()*nErr<1)altI=i>>2}
-          else if(strat===5){if(x<altD)altD=x}
-        }
+        if(e)track(e,i>>2,x,y);
       }
     }
-    if(pass===1)setKey(t,sum,best,bestI,nErr,altD,altI,area,cenX,cenY);
   }
+  commit(t,area);
 }
 // walk from triangle t to the one containing corner point (x,y)
 function locate(t,x,y){
@@ -382,6 +450,7 @@ function initMesh(){
   growTris(Math.max(1024,Math.min(W*H*2+16,1<<16)));
   STAMP.fill(0);MARK.fill(-1);BMARK.fill(-1);
   OUT.fill(0);
+  if(PAINT)PAINT.fill(0);
   const X1=flat?W:W-1,Y1=flat?H:H-1;
   ISV=flat?new Uint8Array((W+1)*(H+1)):null;
   const p0=addPoint(0,0),p1=addPoint(X1,0),p2=addPoint(X1,Y1),p3=addPoint(0,Y1);
@@ -407,13 +476,50 @@ function loadImage(img){
   origCanvas.width=W;origCanvas.height=H;origCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(SRC),W,H),0,0);
   source.width=W;source.height=H;source.getContext('2d').drawImage(origCanvas,0,0);
   const es=Math.max(1,Math.ceil(Math.max(W,H)/260));errmap.width=Math.ceil(W/es);errmap.height=Math.ceil(H/es);
-  focusX=W>>1;focusY=H>>1;
+  focusX=W>>1;focusY=H>>1;irisR=Math.max(1.5,.01*Math.hypot(W,H));
+  prepareTables();
   V=N=ERR=CAND=STAMP=MARK=BMARK=null;triCap=0;
   initMesh();
   $('empty').style.display='none';
-  ['play','step','step100','reset','finish','compare','download'].forEach(id=>$(id).disabled=false);
+  ['play','step','step100','reset','finish','compare','download','record'].forEach(id=>$(id).disabled=false);
   fitCanvas();present(true);
   setStatus(`Bereit: ${W}×${H} px = ${nf.format(W*H)} Pixel. Start mit 4 Eckpunkten.`);
+}
+
+// brightness + hue per pixel (for the light/dark and hue orders), empty brush layer, poster palette
+function prepareTables(){
+  const n=W*H;LUM=new Uint8Array(n);HUE=new Uint16Array(n);PAINT=new Uint8Array(n);
+  for(let p=0,i=0;p<n;p++,i+=4){
+    const r=SRC[i],g=SRC[i+1],b=SRC[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;
+    LUM[p]=Math.round(.2126*r+.7152*g+.0722*b);
+    if(mx<30||d<.2*mx){HUE[p]=1000;continue} // grey/black: after all colours
+    let h=mx===r?(g-b)/d:mx===g?2+(b-r)/d:4+(r-g)/d;h=(h*60+360+15)%360; // +15°: deep reds start the sweep
+    HUE[p]=Math.floor(h);
+  }
+  buildPalette();
+}
+// k-means (farthest-point seeding) on a subsample → poster palette
+function buildPalette(){
+  const k=+$('posterK').value,n=W*H,step=Math.max(1,Math.floor(n/6000)),S=[];
+  for(let p=0;p<n;p+=step){const i=p*4;S.push(SRC[i],SRC[i+1],SRC[i+2])}
+  const m=S.length/3,C=new Float64Array(k*3),minD=new Float64Array(m).fill(Infinity);
+  let pick=0;
+  for(let c=0;c<k;c++){
+    C[c*3]=S[pick*3];C[c*3+1]=S[pick*3+1];C[c*3+2]=S[pick*3+2];
+    let far=0,fd=-1;
+    for(let q=0;q<m;q++){const dr=S[q*3]-C[c*3],dg=S[q*3+1]-C[c*3+1],db=S[q*3+2]-C[c*3+2],d=dr*dr+dg*dg+db*db;
+      if(d<minD[q])minD[q]=d;if(minD[q]>fd){fd=minD[q];far=q}}
+    pick=far;
+  }
+  const lab=new Int32Array(m);
+  for(let it=0;it<10;it++){
+    const acc=new Float64Array(k*4);
+    for(let q=0;q<m;q++){let bd=Infinity,bc=0;
+      for(let c=0;c<k;c++){const dr=S[q*3]-C[c*3],dg=S[q*3+1]-C[c*3+1],db=S[q*3+2]-C[c*3+2],d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;bc=c}}
+      lab[q]=bc;acc[bc*4]+=S[q*3];acc[bc*4+1]+=S[q*3+1];acc[bc*4+2]+=S[q*3+2];acc[bc*4+3]++}
+    for(let c=0;c<k;c++)if(acc[c*4+3]){C[c*3]=acc[c*4]/acc[c*4+3];C[c*3+1]=acc[c*4+1]/acc[c*4+3];C[c*3+2]=acc[c*4+2]/acc[c*4+3]}
+  }
+  PAL=new Uint8Array(k*3);for(let q=0;q<k*3;q++)PAL[q]=Math.round(C[q]);PAL_K=k;
 }
 
 /* ---------- speed ---------- */
@@ -466,6 +572,7 @@ function clearHighlight(){if(recentTris.length){recentTris.length=0;batchId++;dr
 function finish(){
   running=false;done=true;recentTris.length=0;batchId++;present(true);
   $('play').textContent='Fertig ✓';
+  if(rec&&!recHold){let n=0;recHold=setInterval(()=>{recFrame();if(++n>=15)stopRec()},100)} // 1.5 s still frame, then save
   setStatus(`Pixelgenau rekonstruiert mit ${nf.format(ptCount)} Punkten (${(ptCount/(W*H)*100).toFixed(1)} % der Pixel) und ${nf.format(triCount)} Dreiecken.`);
 }
 
@@ -510,7 +617,7 @@ function drawOverlay(){
     octx.fillStyle='rgba(255,59,47,.28)';octx.fill();
     octx.lineWidth=(window.devicePixelRatio||1)*1.1;octx.lineJoin='round';octx.strokeStyle='#ff3b2f';octx.stroke();
   }
-  if(strat===4&&!done){
+  if((strat===4||strat===10)&&!done){
     const d=window.devicePixelRatio||1,x=(focusX+.5)*sx,y=(focusY+.5)*sy;
     octx.lineWidth=2*d;
     for(const [col,w] of [['rgba(0,0,0,.6)',4*d],['#fff',2*d]]){
@@ -519,6 +626,11 @@ function drawOverlay(){
       octx.moveTo(x,y-15*d);octx.lineTo(x,y-4*d);octx.moveTo(x,y+4*d);octx.lineTo(x,y+15*d);octx.stroke();
     }
   }
+  if(strat===9&&brushPos&&!done){ // brush outline under the pointer
+    const d=window.devicePixelRatio||1,rr=brushRadius()*sx;
+    for(const [col,w] of [['rgba(0,0,0,.55)',3*d],['#fff',1.5*d]]){octx.strokeStyle=col;octx.lineWidth=w;octx.beginPath();octx.arc((brushPos[0]+.5)*sx,(brushPos[1]+.5)*sy,rr,0,6.2832);octx.stroke()}
+  }
+  recFrame();
 }
 function updateStats(){
   if(!SRC)return;
@@ -570,7 +682,12 @@ const STRAT_HINTS=[
   'Immer das größte noch fehlerhafte Dreieck, geteilt nahe seiner Mitte – das Netz verfeinert sich gleichmäßig, unabhängig vom Bildinhalt.',
   'Zufällige fehlerhafte Pixel, gewichtet nach Fläche – das Bild entsteht wie ein Pointillismus-Gemälde.',
   'Das Bild wird vom gewählten Punkt aus nach außen scharf. Tippe ins Bild, um den Fokus zu setzen (auch während es läuft).',
-  'Spalte für Spalte von links nach rechts pixelgenau – wie ein Vorhang, der sich öffnet.'];
+  'Spalte für Spalte von links nach rechts pixelgenau – wie ein Vorhang, der sich öffnet.',
+  'Die hellsten Stellen werden zuerst pixelgenau, die Schatten zuletzt – wie ein Foto, das in der Dunkelkammer entsteht.',
+  'Umgekehrt: Schatten und dunkle Konturen zuerst, Lichter und Himmel ganz zum Schluss.',
+  'Ein Farbton nach dem anderen: erst Rot, dann Orange, Gelb, Grün, Blau, Violett – Grau und Schwarz kommen zuletzt.',
+  'Male mit Maus oder Finger ins Bild: bemalte Stellen werden zuerst verfeinert (auch während es läuft). Ohne Bemalung wie „Größter Fehler zuerst“.',
+  'Ein scharfer Kreis wächst vom gewählten Punkt aus nach außen. Tippe ins Bild, um den Mittelpunkt zu setzen.'];
 function reprioritize(){ // rebuild the queue: every triangle gets a key + candidate for the current strategy
   if(!V||done)return;
   hSize=0;
@@ -579,31 +696,100 @@ function reprioritize(){ // rebuild the queue: every triangle gets a key + candi
 }
 function syncStrategy(){
   strat=+$('strategy').value;$('strategyHint').textContent=STRAT_HINTS[strat];
-  result.style.cursor=strat===4?'crosshair':'';
+  result.style.cursor=strat===4||strat===10?'crosshair':strat===9?'none':'';
+  result.style.touchAction=strat===9?'none':'';
+  if(strat!==9)brushPos=null;
   $('detailCtl').style.display=strat===1?'':'none';
   reprioritize();
 }
 $('strategy').onchange=syncStrategy;syncStrategy();
 
 /* ---------- fill mode ---------- */
+const FILL_HINTS={
+  grad:'Farben verlaufen linear zwischen den drei Eckpunkten – weich, kommt mit den wenigsten Punkten aus.',
+  mosaic:'Jedes Pixel nimmt die Farbe des nächstgelegenen Eckpunkts – Zellen wie ein Steinmosaik (Voronoi). Wechsel zu „Verlauf“ ohne Neustart.',
+  flat:'Jedes Dreieck in seiner Durchschnittsfarbe – kantiger Low-Poly-Look. Eckpunkte liegen auf Pixelecken; am Ende ebenfalls pixelgenau.',
+  poster:'Wie „Einfarbig“, aber nur mit einer kleinen Farbpalette aus dem Bild – Siebdruck-Look. Echte Farben erst, wenn ein Dreieck einfarbig ist.'};
+const FILL_NAMES={grad:'Verlauf',mosaic:'Mosaik',flat:'Einfarbig',poster:'Poster'};
 function setFill(f){
-  flat=f;$('fillGrad').classList.toggle('active',!f);$('fillFlat').classList.toggle('active',f);
-  $('fillHint').textContent=f?'Jedes Dreieck in seiner Durchschnittsfarbe – kantiger Low-Poly-Look. Eckpunkte liegen auf Pixelecken; am Ende ebenfalls pixelgenau, braucht dafür aber mehr Punkte.'
-    :'Farben werden zwischen den drei Eckpunkten linear verlaufen – weich, kommt mit wenigen Punkten aus.';
-  if(!V)return;
-  const was=running;setRunning(false);initMesh();present(true);
-  setStatus(`${f?'Einfarbig':'Verlauf'}: neu gestartet mit 4 Eckpunkten.`);
+  fill=f;
+  document.querySelectorAll('[data-fill]').forEach(b=>b.classList.toggle('active',b.dataset.fill===f));
+  $('fillHint').textContent=FILL_HINTS[f];$('posterCtl').style.display=f==='poster'?'':'none';
+  const wantFlat=f==='flat'||f==='poster';
+  if(!V){flat=wantFlat;return}
+  const was=running;setRunning(false);
+  if(wantFlat!==flat){ // different vertex lattice (pixel centres vs. corners) → start over
+    flat=wantFlat;initMesh();present(true);
+    setStatus(`${FILL_NAMES[f]}: neu gestartet mit 4 Eckpunkten.`);
+  }else{               // same mesh, just repaint every triangle with the new fill
+    done=false;reprioritize();present(true);
+    setStatus(`${FILL_NAMES[f]}: gleiches Netz, neu eingefärbt.`);
+    if(hSize===0){finish();return}
+    $('play').textContent=ptCount>4?'Weiter':'Start';
+  }
   if(was)setRunning(true);
 }
-$('fillGrad').onclick=()=>{if(flat)setFill(false)};
-$('fillFlat').onclick=()=>{if(!flat)setFill(true)};
-setFill(false);
+document.querySelectorAll('[data-fill]').forEach(b=>b.onclick=()=>{if(b.dataset.fill!==fill)setFill(b.dataset.fill)});
+setFill('grad');
+let posterRaf=0;
+const syncPoster=()=>{$('posterKValue').textContent=$('posterK').value;
+  if(SRC&&!posterRaf)posterRaf=requestAnimationFrame(()=>{posterRaf=0;buildPalette();if(fill==='poster'){done=false;reprioritize();present(true);if(hSize===0)finish()}})};
+$('posterK').addEventListener('input',syncPoster);syncPoster();
+
+/* ---------- brush (Pinsel) ---------- */
+const brushRadius=()=>Math.max(6,.05*Math.max(W,H));
+function stamp(x,y){ // soft round dab into the paint layer
+  const R=brushRadius(),x0=Math.max(0,Math.floor(x-R)),x1=Math.min(W-1,Math.ceil(x+R)),y0=Math.max(0,Math.floor(y-R)),y1=Math.min(H-1,Math.ceil(y+R));
+  for(let yy=y0;yy<=y1;yy++)for(let xx=x0;xx<=x1;xx++){const d2=((xx-x)*(xx-x)+(yy-y)*(yy-y))/(R*R);
+    if(d2<1){const v=Math.round(255*(1-d2)),p=yy*W+xx;if(v>PAINT[p])PAINT[p]=v}}
+}
+function scheduleRepaint(){if(!brushTimer)brushTimer=setTimeout(()=>{brushTimer=0;reprioritize()},120)}
+function pointerPixel(e){const b=result.getBoundingClientRect();
+  return [Math.max(0,Math.min(W-1,(e.clientX-b.left)/b.width*W-.5)),Math.max(0,Math.min(H-1,(e.clientY-b.top)/b.height*H-.5))]}
+result.addEventListener('pointermove',e=>{
+  if(strat!==9||!W)return;
+  const q=pointerPixel(e);
+  if(brushDown&&brushPos){const dx=q[0]-brushPos[0],dy=q[1]-brushPos[1],steps=Math.max(1,Math.ceil(Math.hypot(dx,dy)/(brushRadius()/3)));
+    for(let s=1;s<=steps;s++)stamp(brushPos[0]+dx*s/steps,brushPos[1]+dy*s/steps);scheduleRepaint()}
+  brushPos=q;if(!running)drawOverlay();
+});
+result.addEventListener('pointerleave',()=>{if(strat===9){brushPos=null;brushDown=false;if(!running)drawOverlay()}});
+window.addEventListener('pointerup',()=>{if(brushDown){brushDown=false;scheduleRepaint()}});
+
+/* ---------- video export ---------- */
+function recFrame(){
+  if(!rec)return;
+  recCtx.fillStyle='#000';recCtx.fillRect(0,0,recCanvas.width,recCanvas.height);
+  recCtx.imageSmoothingEnabled=false;recCtx.drawImage(result,0,0,recCanvas.width,recCanvas.height);
+  if(overlay.style.visibility!=='hidden'){recCtx.imageSmoothingEnabled=true;recCtx.drawImage(overlay,0,0,recCanvas.width,recCanvas.height)}
+}
+function startRec(){
+  const s=Math.max(1,Math.floor(1080/Math.max(W,H)));          // integer upscale keeps pixels crisp
+  recCanvas=document.createElement('canvas');recCanvas.width=(W*s+1)&~1;recCanvas.height=(H*s+1)&~1;
+  recCtx=recCanvas.getContext('2d');
+  recMime=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+  rec=new MediaRecorder(recCanvas.captureStream(30),recMime?{mimeType:recMime,videoBitsPerSecond:12e6}:{});
+  recChunks=[];rec.ondataavailable=e=>{if(e.data.size)recChunks.push(e.data)};
+  rec.onstop=()=>{
+    const type=rec.mimeType||recMime||'video/webm',blob=new Blob(recChunks,{type}),a=document.createElement('a');
+    a.download=`triangulation-${FILL_NAMES[fill].toLowerCase()}.${type.includes('mp4')?'mp4':'webm'}`;a.href=URL.createObjectURL(blob);a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),10000);rec=null;
+    $('record').textContent='● Video aufnehmen';$('record').classList.remove('rec');
+  };
+  rec.start(250);recFrame();
+  $('record').textContent='■ Aufnahme stoppen & speichern';$('record').classList.add('rec');
+}
+function stopRec(){if(recHold){clearInterval(recHold);recHold=0}if(rec&&rec.state!=='inactive'){recFrame();rec.stop()}}
+if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream){$('record').title='Video-Aufnahme wird von diesem Browser nicht unterstützt';$('record').dataset.unsupported='1'}
+$('record').onclick=()=>{if($('record').dataset.unsupported){setStatus('Video-Aufnahme wird von diesem Browser nicht unterstützt.');return}
+  if(rec)stopRec();else{startRec();setStatus(done?'Aufnahme läuft – „Neu starten“ und „Start“ drücken.':'Aufnahme läuft. Endet automatisch, sobald das Bild pixelgenau ist.')}};
 let detailRaf=0;
 const syncDetail=()=>{detailW=+$('detailW').value/100;$('detailWValue').textContent=Math.round(detailW*100)+' %';
   if(strat===1&&!detailRaf)detailRaf=requestAnimationFrame(()=>{detailRaf=0;reprioritize()})};
 $('detailW').addEventListener('input',syncDetail);syncDetail();
 result.addEventListener('pointerdown',e=>{
-  if(strat!==4||!W)return;
+  if(strat===9&&W){e.preventDefault();brushDown=true;brushPos=pointerPixel(e);stamp(brushPos[0],brushPos[1]);scheduleRepaint();drawOverlay();return}
+  if((strat!==4&&strat!==10)||!W)return;
   const b=result.getBoundingClientRect();
   focusX=Math.max(0,Math.min(W-1,Math.floor((e.clientX-b.left)/b.width*W)));
   focusY=Math.max(0,Math.min(H-1,Math.floor((e.clientY-b.top)/b.height*H)));
