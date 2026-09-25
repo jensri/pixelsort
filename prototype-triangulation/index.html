@@ -77,6 +77,11 @@ button:disabled{opacity:.45;cursor:default}
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
   </div>
 
+  <div class="group"><h2>Füllung</h2>
+    <div class="modeRow"><button id="fillGrad" class="active">Verlauf</button><button id="fillFlat">Einfarbig</button></div>
+    <div class="hint" id="fillHint"></div>
+  </div>
+
   <div class="group"><h2>Reihenfolge</h2>
     <div class="control"><select id="strategy">
       <option value="0" selected>Größter Fehler zuerst (grob → fein)</option>
@@ -149,6 +154,9 @@ let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
 let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
 let strat=0,focusX=0,focusY=0,detailW=.5;
+// flat: solid triangles. Vertices then sit on pixel CORNERS (0..W × 0..H) and every pixel centre
+// belongs to exactly one triangle (top-left rule), so a fully refined mesh is pixel-perfect too.
+let flat=false,ISV=null;
 let lastStatT=0,meshDirty=true;
 
 /* ---------- geometry (integer coordinates → exact in doubles) ---------- */
@@ -169,7 +177,7 @@ function growTris(min){
 }
 function addPoint(x,y){
   if(ptCount>=ptCap){const cap=Math.max(1024,ptCap*2);const a=new Int32Array(cap),b=new Int32Array(cap);if(PX){a.set(PX);b.set(PY)}PX=a;PY=b;ptCap=cap}
-  PX[ptCount]=x;PY[ptCount]=y;return ptCount++;
+  PX[ptCount]=x;PY[ptCount]=y;if(flat)ISV[y*(W+1)+x]=1;return ptCount++;
 }
 function newTri(){growTris(triCount+1);return triCount++}
 function setTri(t,a,b,c,na,nb,nc){const k=3*t;V[k]=a;V[k+1]=b;V[k+2]=c;N[k]=na;N[k+1]=nb;N[k+2]=nc;STAMP[t]++;touch(t)}
@@ -198,6 +206,7 @@ function hPopValid(){ // returns tri id or -1
 
 /* ---------- rasterise one triangle: paint output + find worst pixel ---------- */
 function scanTri(t){
+  if(flat)return scanFlat(t);
   const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
   const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
   const area=orient(ax,ay,bx,by,cx,cy);
@@ -229,6 +238,9 @@ function scanTri(t){
       }
     }
   }
+  setKey(t,sum,best,bestI,nErr,altD,altI,area,sx3/3,sy3/3);
+}
+function setKey(t,sum,best,bestI,nErr,altD,altI,area,cenX,cenY){
   ERR[t]=sum;CAND[t]=bestI;
   if(sum===0)return;
   // every strategy only picks wrong pixels, so each one still ends pixel-perfect
@@ -237,12 +249,62 @@ function scanTri(t){
     case 1:key=detailW*Math.log(best)+(1-detailW)*Math.log(sum)*(1-1e-6)+1e-6*Math.log(sum);break; // blend of peak and total error (log domain)
     case 2:key=area+Math.random()*.5;CAND[t]=altI;break;     // largest triangle, split near its centre
     case 3:key=Math.pow(Math.random(),1/nErr);CAND[t]=altI;break; // random, weighted by number of wrong pixels
-    case 4:{const dx=sx3/3-focusX,dy=sy3/3-focusY;          // nearest to focus, error only as a mild factor
+    case 4:{const dx=cenX-focusX,dy=cenY-focusY;          // nearest to focus, error only as a mild factor
       key=Math.log(sum)-Math.sqrt(dx*dx+dy*dy)/(.03*Math.hypot(W,H));break}
     case 5:key=(W-altD)*2048+best;break;                     // leftmost wrong column first, split at worst pixel
     default:key=sum;                                         // total error: big, wrong triangles first
   }
   hPush(key,t);
+}
+
+/* ---------- solid fill: mean colour of the pixel centres the triangle owns ---------- */
+function scanFlat(t){
+  const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
+  // doubled coordinates: corners at even, pixel centres at odd values → exact integer tests
+  const ax=2*PX[a],ay=2*PY[a],bx=2*PX[b],by=2*PY[b],cx=2*PX[c],cy=2*PY[c];
+  const area=orient(ax,ay,bx,by,cx,cy)/4;
+  // top-left rule: a centre exactly on an edge belongs to the triangle for which that edge points "down" (or right if horizontal);
+  // the neighbour sees the edge reversed, so every centre has exactly one owner
+  const tl0=(cy-by)>0||((cy-by)===0&&(cx-bx)>0),tl1=(ay-cy)>0||((ay-cy)===0&&(ax-cx)>0),tl2=(by-ay)>0||((by-ay)===0&&(bx-ax)>0);
+  const x0=Math.min(PX[a],PX[b],PX[c]),x1=Math.max(PX[a],PX[b],PX[c])-1,y0=Math.min(PY[a],PY[b],PY[c]),y1=Math.max(PY[a],PY[b],PY[c])-1;
+  const s0=2*(by-cy),s1=2*(cy-ay),s2=2*(ay-by);
+  let n=0,sr=0,sg=0,sb=0,sa=0;
+  for(let pass=0;pass<2;pass++){
+    let mr=0,mg=0,mb=0,ma=0;
+    if(pass===1){if(n===0){ERR[t]=0;CAND[t]=-1;return}mr=Math.round(sr/n);mg=Math.round(sg/n);mb=Math.round(sb/n);ma=Math.round(sa/n)}
+    let sum=0,best=0,bestI=-1,nErr=0,altD=Infinity,altI=-1;
+    const cenX=(PX[a]+PX[b]+PX[c])/3-.5,cenY=(PY[a]+PY[b]+PY[c])/3-.5; // centroid in pixel-index coordinates
+    for(let y=y0;y<=y1;y++){
+      let w0=orient(bx,by,cx,cy,2*x0+1,2*y+1),w1=orient(cx,cy,ax,ay,2*x0+1,2*y+1),w2=orient(ax,ay,bx,by,2*x0+1,2*y+1);
+      let i=(y*W+x0)*4,inside=false;
+      for(let x=x0;x<=x1;x++,i+=4,w0+=s0,w1+=s1,w2+=s2){
+        if(!((w0>0||(w0===0&&tl0))&&(w1>0||(w1===0&&tl1))&&(w2>0||(w2===0&&tl2)))){if(inside)break;continue}
+        inside=true;
+        if(pass===0){n++;sr+=SRC[i];sg+=SRC[i+1];sb+=SRC[i+2];sa+=SRC[i+3];continue}
+        OUT[i]=mr;OUT[i+1]=mg;OUT[i+2]=mb;OUT[i+3]=ma;
+        const e=Math.abs(mr-SRC[i])+Math.abs(mg-SRC[i+1])+Math.abs(mb-SRC[i+2])+Math.abs(ma-SRC[i+3]);
+        if(e){
+          sum+=e;nErr++;
+          if(e>best){best=e;bestI=i>>2}
+          if(strat===2){const dx=x-cenX,dy=y-cenY,d=dx*dx+dy*dy;if(d<altD){altD=d;altI=i>>2}}
+          else if(strat===3){if(Math.random()*nErr<1)altI=i>>2}
+          else if(strat===5){if(x<altD)altD=x}
+        }
+      }
+    }
+    if(pass===1)setKey(t,sum,best,bestI,nErr,altD,altI,area,cenX,cenY);
+  }
+}
+// walk from triangle t to the one containing corner point (x,y)
+function locate(t,x,y){
+  for(let guard=0;guard<1e7;guard++){
+    const k=3*t;let next=-1;
+    for(let e=0;e<3;e++){const a=V[k+e],b=V[k+(e+1)%3];
+      if(orient(PX[a],PY[a],PX[b],PY[b],x,y)<0){next=N[k+e];break}}
+    if(next<0)return t;
+    t=next;
+  }
+  return t;
 }
 
 /* ---------- incremental Delaunay insertion ---------- */
@@ -265,7 +327,16 @@ function legalize(){
   }
 }
 function insert(t){
-  const pix=CAND[t],x=pix%W,y=(pix/W)|0;
+  const pix=CAND[t],popped=t;let x=pix%W,y=(pix/W)|0;
+  if(flat){
+    // add the free corner of the wrong pixel that lies closest to the triangle's centroid
+    const k0=3*t,gx=(PX[V[k0]]+PX[V[k0+1]]+PX[V[k0+2]])/3,gy=(PY[V[k0]]+PY[V[k0+1]]+PY[V[k0+2]])/3;
+    let bx=-1,by=-1,bd=Infinity;
+    for(let j=0;j<4;j++){const cx=x+(j&1),cy=y+(j>>1);
+      if(ISV[cy*(W+1)+cx])continue;const d=(cx-gx)*(cx-gx)+(cy-gy)*(cy-gy);if(d<bd){bd=d;bx=cx;by=cy}}
+    if(bx<0){ERR[t]=0;STAMP[t]++;return} // cannot happen in a Delaunay mesh (pixel would be exact); safety net
+    x=bx;y=by;t=locate(t,x,y);
+  }
   const k=3*t;
   // rotate so that we know which edge (if any) contains p
   const v0=V[k],v1=V[k+1],v2=V[k+2];
@@ -299,6 +370,8 @@ function insert(t){
   }
   legalize();
   for(let i=0;i<touched.length;i++)scanTri(touched[i]);
+  // solid mode: the new corner may lie in a neighbour, leaving the popped triangle unchanged → queue it again
+  if(MARK[popped]!==insertId)scanTri(popped);
   // remember every triangle created or reshaped by this insertion (deduped per batch)
   for(let i=0;i<touched.length;i++){const t=touched[i];if(BMARK[t]!==batchId){BMARK[t]=batchId;recentTris.push(t)}}
 }
@@ -309,10 +382,12 @@ function initMesh(){
   growTris(Math.max(1024,Math.min(W*H*2+16,1<<16)));
   STAMP.fill(0);MARK.fill(-1);BMARK.fill(-1);
   OUT.fill(0);
-  const p0=addPoint(0,0),p1=addPoint(W-1,0),p2=addPoint(W-1,H-1),p3=addPoint(0,H-1);
+  const X1=flat?W:W-1,Y1=flat?H:H-1;
+  ISV=flat?new Uint8Array((W+1)*(H+1)):null;
+  const p0=addPoint(0,0),p1=addPoint(X1,0),p2=addPoint(X1,Y1),p3=addPoint(0,Y1);
   // CCW with respect to orient(): in image coords (y down) this is clockwise on screen, which is fine
   const t0=newTri(),t1=newTri();
-  const cw=orient(0,0,W-1,0,W-1,H-1)>0;
+  const cw=orient(0,0,X1,0,X1,Y1)>0;
   insertId++;touched.length=0;
   if(cw){setTri(t0,p0,p1,p2,-1,-1,t1);setTri(t1,p0,p2,p3,t0,-1,-1)}
   else{setTri(t0,p0,p2,p1,t1,-1,-1);setTri(t1,p0,p3,p2,-1,-1,t0)}
@@ -415,7 +490,7 @@ window.addEventListener('resize',fitCanvas);
 function drawOverlay(){
   octx.clearRect(0,0,overlay.width,overlay.height);
   if(!W||!V)return;
-  const sx=overlay.width/W,sy=overlay.height/H,ox=.5*sx,oy=.5*sy; // vertices sit on pixel centres
+  const sx=overlay.width/W,sy=overlay.height/H,ox=flat?0:.5*sx,oy=flat?0:.5*sy; // vertices on pixel centres (gradient) or corners (solid)
   if($('showMesh').checked&&triCount<60000){
     const dens=Math.min(1,overlay.width*overlay.height/(triCount*40+1));
     octx.lineWidth=Math.max(.5,Math.min(1,dens))*(window.devicePixelRatio||1)*.8;
@@ -436,7 +511,7 @@ function drawOverlay(){
     octx.lineWidth=(window.devicePixelRatio||1)*1.1;octx.lineJoin='round';octx.strokeStyle='#ff3b2f';octx.stroke();
   }
   if(strat===4&&!done){
-    const d=window.devicePixelRatio||1,x=focusX*sx+ox,y=focusY*sy+oy;
+    const d=window.devicePixelRatio||1,x=(focusX+.5)*sx,y=(focusY+.5)*sy;
     octx.lineWidth=2*d;
     for(const [col,w] of [['rgba(0,0,0,.6)',4*d],['#fff',2*d]]){
       octx.strokeStyle=col;octx.lineWidth=w;octx.beginPath();octx.arc(x,y,9*d,0,6.2832);
@@ -509,6 +584,20 @@ function syncStrategy(){
   reprioritize();
 }
 $('strategy').onchange=syncStrategy;syncStrategy();
+
+/* ---------- fill mode ---------- */
+function setFill(f){
+  flat=f;$('fillGrad').classList.toggle('active',!f);$('fillFlat').classList.toggle('active',f);
+  $('fillHint').textContent=f?'Jedes Dreieck in seiner Durchschnittsfarbe – kantiger Low-Poly-Look. Eckpunkte liegen auf Pixelecken; am Ende ebenfalls pixelgenau, braucht dafür aber mehr Punkte.'
+    :'Farben werden zwischen den drei Eckpunkten linear verlaufen – weich, kommt mit wenigen Punkten aus.';
+  if(!V)return;
+  const was=running;setRunning(false);initMesh();present(true);
+  setStatus(`${f?'Einfarbig':'Verlauf'}: neu gestartet mit 4 Eckpunkten.`);
+  if(was)setRunning(true);
+}
+$('fillGrad').onclick=()=>{if(flat)setFill(false)};
+$('fillFlat').onclick=()=>{if(!flat)setFill(true)};
+setFill(false);
 let detailRaf=0;
 const syncDetail=()=>{detailW=+$('detailW').value/100;$('detailWValue').textContent=Math.round(detailW*100)+' %';
   if(strat===1&&!detailRaf)detailRaf=requestAnimationFrame(()=>{detailRaf=0;reprioritize()})};
