@@ -352,9 +352,11 @@ function frame(now){
 function setRunning(on){
   running=on&&!done;$('play').textContent=running?'Pause':(done?'Fertig ✓':(ptCount>4?'Weiter':'Start'));
   if(running){lastT=performance.now();requestAnimationFrame(frame)}
+  else clearHighlight();
 }
+function clearHighlight(){if(recentTris.length){recentTris.length=0;batchId++;drawOverlay()}}
 function finish(){
-  running=false;done=true;present(true);
+  running=false;done=true;recentTris.length=0;batchId++;present(true);
   $('play').textContent='Fertig ✓';
   setStatus(`Pixelgenau rekonstruiert mit ${nf.format(ptCount)} Punkten (${(ptCount/(W*H)*100).toFixed(1)} % der Pixel) und ${nf.format(triCount)} Dreiecken.`);
 }
