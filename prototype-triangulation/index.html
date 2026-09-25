@@ -15,13 +15,25 @@ h1{margin:0;font-size:clamp(28px,4vw,48px);letter-spacing:-.04em}
 header p{margin:6px 0 20px;color:var(--muted);max-width:860px;line-height:1.45}
 .layout{display:grid;grid-template-columns:minmax(300px,370px) 1fr;gap:18px;align-items:start}
 .panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px}
-.panel{padding:18px;position:sticky;top:14px}
+.panel{padding:18px;position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto}
+.panel>.buttons:first-child{margin-top:0}
 .stage{padding:14px}
 .drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;min-height:76px;display:grid;place-items:center;text-align:center;overflow:hidden;background:rgba(127,127,127,.035)}
 .drop.over{border-color:var(--accent)}
 .fileInput{position:absolute;inset:0;width:100%;height:100%;opacity:.001;font-size:100px;cursor:pointer}
 .drop strong{display:block}.drop small{color:var(--muted)}
 .group{margin-top:18px}
+.sec{border-top:1px solid var(--line);margin-top:14px}
+.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:10px;padding:13px 0 11px;user-select:none}
+.sec>summary::-webkit-details-marker{display:none}
+.sec>summary span{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.sec>summary em{font-style:normal;font-size:13px;color:var(--text);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec>summary::after{content:"";width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg) translateY(-3px);transition:transform .15s;flex:none}
+.sec[open]>summary::after{transform:rotate(-135deg) translateY(-1px)}
+.sec[open]>summary em{visibility:hidden}
+.secBody{padding-bottom:6px}
+.subhead{font-size:12px;color:var(--muted);margin:14px 0 8px}
+.secBody>.subhead:first-child{margin-top:0}
 .group h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 11px}
 .control{margin-bottom:13px}
 .labelrow{display:flex;justify-content:space-between;gap:12px;font-size:14px;margin-bottom:5px}
@@ -58,7 +70,7 @@ button:disabled{opacity:.45;cursor:default}
 .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;font-size:12px;color:var(--muted)}
 .stats b{display:block;color:var(--text);font-size:16px;font-variant-numeric:tabular-nums}
 @media(max-width:950px){.layout{grid-template-columns:1fr}.panel{position:static}.canvasWrap{grid-template-columns:1fr 220px}.mainCanvasBox{min-height:420px}}
-@media(max-width:650px){.canvasWrap{grid-template-columns:1fr}.previewCol{grid-template-columns:1fr 1fr}.stats{grid-column:1/-1}.mainCanvasBox{min-height:300px}.buttons{grid-template-columns:1fr}.primary{grid-column:auto!important}}
+@media(max-width:650px){.canvasWrap{grid-template-columns:1fr}.previewCol{grid-template-columns:1fr 1fr}.stats{grid-column:1/-1}.mainCanvasBox{min-height:300px}.buttons button{padding:10px 6px;font-size:14px}}
 </style>
 </head>
 <body>
@@ -66,9 +78,23 @@ button:disabled{opacity:.45;cursor:default}
 <header><h1>Triangulation Restore</h1><p>Das Bild beginnt als zwei Dreiecke. Schritt für Schritt wird genau dort ein neuer Eckpunkt gesetzt, wo das Dreiecksnetz am stärksten vom Original abweicht; das Netz bleibt dabei eine Delaunay-Triangulierung. Die Farben werden innerhalb jedes Dreiecks linear interpoliert – bis jedes Pixel exakt stimmt.</p></header>
 <div class="layout">
 <aside class="panel">
-  <div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*"><div><strong>Bild auswählen</strong><small>Antippen, hineinziehen oder einfügen (Strg+V)</small></div></div>
+  <div class="buttons">
+    <button class="primary" id="play" disabled>Start</button>
+    <button id="step" disabled>+1 Punkt</button>
+    <button id="step100" disabled>+100 Punkte</button>
+    <button id="reset" disabled>Neu starten</button>
+    <button id="finish" disabled>Sofort fertig</button>
+    <button id="compare" disabled>Original (halten)</button>
+    <button id="download" disabled>PNG speichern</button>
+    <button id="record" disabled style="grid-column:1/-1">● Video aufnehmen</button>
+  </div>
+  <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
+  <div class="progress"><div id="progressBar"></div></div>
 
-  <div class="group"><h2>Arbeitsauflösung</h2>
+  <details class="sec" data-sec="image" open><summary><span>Bild</span><em id="sumImage"></em></summary><div class="secBody">
+  <div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*"><div><strong>Bild auswählen</strong><small>Antippen, hineinziehen oder einfügen (Strg+V)</small></div></div>
+    <button id="demo" style="width:100%;margin-top:8px">Demo-Bild laden</button>
+    <div class="subhead">Arbeitsauflösung</div>
     <div class="control"><select id="maxSize">
       <option value="256">max. 256 px</option>
       <option value="512" selected>max. 512 px</option>
@@ -77,15 +103,15 @@ button:disabled{opacity:.45;cursor:default}
       <option value="4096">Original (bis 4096 px)</option>
     </select></div>
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
-  </div>
+  </div></details>
 
-  <div class="group"><h2>Füllung</h2>
+  <details class="sec" data-sec="look" open><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
+    <button id="shuffle" style="width:100%;margin-bottom:12px">🎲 Zufall – Füllung, Reihenfolge &amp; Parameter würfeln</button>
+    <div class="subhead">Füllung</div>
     <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="mosaic">Mosaik</button><button data-fill="flat">Einfarbig</button><button data-fill="poster">Poster</button></div>
     <div class="control" id="posterCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="posterK">Farben</label><span class="value" id="posterKValue"></span></div><input id="posterK" type="range" min="3" max="32" step="1" value="8"></div>
     <div class="hint" id="fillHint"></div>
-  </div>
-
-  <div class="group"><h2>Reihenfolge</h2>
+    <div class="subhead">Reihenfolge</div>
     <div class="control"><select id="strategy">
       <option value="0" selected>Größter Fehler zuerst (grob → fein)</option>
       <option value="1">Details zuerst (schärfste Stellen)</option>
@@ -101,9 +127,9 @@ button:disabled{opacity:.45;cursor:default}
     </select></div>
     <div class="control" id="detailCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="detailW">Detail-Gewicht</label><span class="value" id="detailWValue"></span></div><input id="detailW" type="range" min="0" max="100" step="5" value="50"></div>
     <div class="hint" id="strategyHint"></div>
-  </div>
+  </div></details>
 
-  <div class="group"><h2>Tempo</h2>
+  <details class="sec" data-sec="tempo"><summary><span>Tempo</span><em id="sumTempo"></em></summary><div class="secBody">
     <div class="modeRow"><button id="modeConst" class="active">Konstant</button><button id="modeGeo">Mitwachsend</button><button id="modeTime">Dauer</button></div>
     <div class="control" id="speedCtl" style="margin-top:13px"><div class="labelrow"><label for="speed">Geschwindigkeit</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0" max="100" step="1" value="45"></div>
     <div id="timeCtl" style="display:none;margin-top:13px">
@@ -115,25 +141,14 @@ button:disabled{opacity:.45;cursor:default}
       <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="autoRec"> Beim Start Video aufnehmen</label></div>
     </div>
     <div class="hint" id="speedHint"></div>
-    <div class="checks" style="margin-top:10px">
+  </div></details>
+
+  <details class="sec" data-sec="view"><summary><span>Anzeige</span><em id="sumView"></em></summary><div class="secBody">
+    <div class="checks">
       <label><input type="checkbox" id="showMesh" checked> Dreiecksnetz anzeigen</label>
       <label><input type="checkbox" id="showNew"> Neue Dreiecke hervorheben</label>
     </div>
-  </div>
-
-  <div class="buttons">
-    <button class="primary" id="play" disabled>Start</button>
-    <button id="step" disabled>+1 Punkt</button>
-    <button id="step100" disabled>+100 Punkte</button>
-    <button id="reset" disabled>Neu starten</button>
-    <button id="finish" disabled>Sofort fertig</button>
-    <button id="compare" disabled>Original (halten)</button>
-    <button id="download" disabled>PNG speichern</button>
-    <button id="record" disabled style="grid-column:1/-1">● Video aufnehmen</button>
-  </div>
-  <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
-  <div class="progress"><div id="progressBar"></div></div>
-  <div class="buttons" style="margin-top:12px"><button id="demo" style="grid-column:1/-1">Demo-Bild laden</button></div>
+  </div></details>
 </aside>
 
 <main class="stage"><div class="canvasWrap">
@@ -500,6 +515,7 @@ function loadImage(img){
   $('empty').style.display='none';
   ['play','step','step100','reset','finish','compare','download','record'].forEach(id=>$(id).disabled=false);
   fitCanvas();present(true);
+  updateSummaries();
   setStatus(`Bereit: ${W}×${H} px = ${nf.format(W*H)} Pixel. Start mit 4 Eckpunkten.`);
 }
 
@@ -917,6 +933,47 @@ result.addEventListener('pointerdown',e=>{
   reprioritize();
 });
 $('maxSize').onchange=()=>{if(loadedImage){setRunning(false);loadImage(loadedImage)}};
+
+/* ---------- settings panel: section summaries, remembered open state ---------- */
+function updateSummaries(){
+  $('sumImage').textContent=W?`${W}×${H} px`:'kein Bild';
+  const st=$('strategy'),fb=document.querySelector('[data-fill].active');
+  $('sumLook').textContent=`${fb?fb.textContent:''} · ${st.options[st.selectedIndex].text.replace(/\s*\(.*$/,'')}`;
+  $('sumTempo').textContent=mode==='time'?`Dauer ${$('dur').value} · ${curve==='exp'?'exponentiell':'linear'}${$('autoRec').checked?' · ● Video':''}`
+    :`${mode==='const'?'Konstant':'Mitwachsend'} · ${$('speedValue').textContent}`;
+  const v=[$('showMesh').checked&&'Netz',$('showNew').checked&&'neue Dreiecke'].filter(Boolean);
+  $('sumView').textContent=v.length?v.join(' · '):'nur Bild';
+}
+let sumRaf=0;
+['input','change','click'].forEach(ev=>document.querySelector('.panel').addEventListener(ev,()=>{if(!sumRaf)sumRaf=requestAnimationFrame(()=>{sumRaf=0;updateSummaries()})}));
+document.querySelectorAll('details.sec').forEach(d=>{
+  // remembered per section; the image section always starts open, since the page starts without an image
+  if(d.dataset.sec!=='image')try{const v=localStorage.getItem('tri-sec-'+d.dataset.sec);if(v!==null)d.open=v==='1'}catch(e){}
+  d.addEventListener('toggle',()=>{try{localStorage.setItem('tri-sec-'+d.dataset.sec,d.open?'1':'0')}catch(e){}});
+});
+updateSummaries();
+
+/* ---------- Zufall: roll fill, order and their parameters, then start fresh ---------- */
+$('shuffle').onclick=()=>{
+  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  const fillNew=pick(['grad','mosaic','flat','poster']);
+  const orderNew=pick([0,1,2,3,4,5,6,7,8,10].filter(o=>o!==strat||Math.random()<.2)); // Pinsel needs painting → never rolled
+  $('strategy').value=String(orderNew);
+  $('detailW').value=String(5*Math.round((20+Math.random()*60)/5));
+  $('posterK').value=String(Math.round(4+Math.random()*12));
+  if(W){focusX=Math.round(W*(.15+.7*Math.random()));focusY=Math.round(H*(.15+.7*Math.random()))}
+  detailW=+$('detailW').value/100;$('detailWValue').textContent=$('detailW').value+' %';$('posterKValue').textContent=$('posterK').value;
+  if(SRC)buildPalette();
+  const was=running&&mode!=='time';setRunning(false);
+  strat=orderNew;syncStrategy();
+  if(fillNew!==fill)setFill(fillNew);
+  if(V){initMesh();present(true)}
+  updateSummaries();
+  const name=$('strategy').options[$('strategy').selectedIndex].text.replace(/\s*\(.*$/,'');
+  setStatus(`Zufall: ${FILL_NAMES[fill]} · ${name}`+(strat===1?` · Detail ${$('detailW').value} %`:'')+(fill==='poster'?` · ${$('posterK').value} Farben`:'')+
+    (strat===4||strat===10?' · Punkt gewürfelt':'')+(W?(was?'':' – „Start“ drücken.'):' – jetzt ein Bild laden.'));
+  if(was)setRunning(true);
+};
 
 function loadFile(file){
   if(!file||!file.type.startsWith('image/'))return;
