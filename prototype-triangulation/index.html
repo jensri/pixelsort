@@ -107,7 +107,10 @@ button:disabled{opacity:.45;cursor:default}
     <div class="modeRow"><button id="modeConst" class="active">Konstant</button><button id="modeGeo">Mitwachsend</button><button id="modeTime">Dauer</button></div>
     <div class="control" id="speedCtl" style="margin-top:13px"><div class="labelrow"><label for="speed">Geschwindigkeit</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0" max="100" step="1" value="45"></div>
     <div id="timeCtl" style="display:none;margin-top:13px">
-      <div class="control"><div class="labelrow"><label for="dur">Gesamtdauer</label><span class="value" id="durValue"></span></div><input id="dur" type="range" min="0" max="12" step="1" value="6"></div>
+      <div class="control"><div class="labelrow"><label for="dur">Gesamtdauer (m:ss)</label><span class="value" id="durValue"></span></div>
+        <input id="dur" type="text" inputmode="decimal" value="1:00" list="durPresets" autocomplete="off" spellcheck="false"
+          style="width:100%;font:inherit;font-variant-numeric:tabular-nums;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text)">
+        <datalist id="durPresets"><option value="0:10"><option value="0:30"><option value="1:00"><option value="2:00"><option value="3:00"><option value="5:00"></datalist></div>
       <div class="modeRow"><button id="curveExp" class="active">Exponentiell</button><button id="curveLin">Linear</button></div>
       <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="autoRec"> Beim Start Video aufnehmen</label></div>
     </div>
@@ -540,17 +543,26 @@ function speedValue(){const s=+$('speed').value/100;
                       :0.01*Math.pow(10,s*2.7);    // 1 % … ~500 % pro s
 }
 function currentRate(){const v=speedValue();return mode==='const'?v:Math.max(1,ptCount*v)}
-const DURS=[5,10,15,20,30,45,60,90,120,180,240,300,600];
-const fmtDur=d=>d<60?d+' s':d%60?`${Math.floor(d/60)} min ${d%60} s`:`${d/60} min`;
+// duration field: "3:21", "3:21.5", "1:02:03" or plain seconds ("90") → seconds; null if invalid
+function parseDur(txt){
+  const m=String(txt).trim().replace(',','.').match(/^(?:(\d+):)?(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  if(!m)return null;
+  const parts=[m[1],m[2],m[3]].filter(v=>v!==undefined).map(Number);
+  const sec=parts.reduce((a,v)=>a*60+v,0);
+  return sec>=2&&sec<=36000?sec:null;
+}
+let durSec=60;
+const fmtDur=d=>{const m=Math.floor(d/60),sec=d-m*60;return `${m}:${sec<10?'0':''}${+sec.toFixed(2)}`.replace('.',',')};
 let curve='exp';
 function syncSpeed(){
   $('speedCtl').style.display=mode==='time'?'none':'';$('timeCtl').style.display=mode==='time'?'':'none';
   ['Const','Geo','Time'].forEach(m=>$('mode'+m).classList.toggle('active',mode===m.toLowerCase()));
   $('curveExp').classList.toggle('active',curve==='exp');$('curveLin').classList.toggle('active',curve==='lin');
   if(mode==='time'){
-    $('durValue').textContent=fmtDur(DURS[+$('dur').value]);
+    const pd=parseDur($('dur').value);$('dur').style.borderColor=pd?'':'#e5332a';
+    if(pd)durSec=pd;$('durValue').textContent=pd?`= ${nf.format(+pd.toFixed(2))} s`:'ungültig (z. B. 3:21)';
     const e=estValid()?`Benötigt genau ${nf.format(est.n)} Punkte (vorab berechnet in ${(est.ms/1000).toFixed(1)} s).`:'Die nötige Punktzahl wird beim Start in einem stillen Vorlauf exakt berechnet.';
-    $('speedHint').textContent=`${e} ${curve==='exp'?'Exponentiell: jede Verdopplung der Punkte dauert gleich lang – grob und fein bekommen gleich viel Zeit.':'Linear: gleich viele neue Punkte pro Sekunde – die groben Schritte fliegen in den ersten Sekunden vorbei.'} Mit Aufnahme ist das Video genau so lang (inkl. ${String(REC_HOLD).replace('.',',')} s Standbild).`;
+    $('speedHint').textContent=`${e} ${curve==='exp'?'Exponentiell: der erste neue Punkt kommt nach 0,5 s, danach beschleunigt es – jede Verdopplung dauert etwa gleich lang, grob und fein bekommen gleich viel Zeit.':'Linear: gleich viele neue Punkte pro Sekunde – die groben Schritte fliegen in den ersten Sekunden vorbei.'} Mit Aufnahme ist das Video genau so lang (inkl. ${String(REC_HOLD).replace('.',',')} s Standbild).`;
     return;
   }
   const v=speedValue();
@@ -562,20 +574,34 @@ $('speed').addEventListener('input',syncSpeed);
 function setMode(m){mode=m;syncSpeed();if(m==='time'&&running)replan()}
 $('modeConst').onclick=()=>setMode('const');$('modeGeo').onclick=()=>setMode('geo');$('modeTime').onclick=()=>setMode('time');
 $('curveExp').onclick=()=>{curve='exp';syncSpeed();replan()};$('curveLin').onclick=()=>{curve='lin';syncSpeed();replan()};
-$('dur').addEventListener('input',()=>{syncSpeed();replan()});
+$('dur').addEventListener('input',()=>{syncSpeed();if(running)replan()});
+$('dur').addEventListener('change',()=>{const pd=parseDur($('dur').value);if(pd)$('dur').value=fmtDur(pd).replace(',','.');syncSpeed()});
 
 /* ---------- time-based tempo ---------- */
 // everything that changes which points get inserted
 const estKey=()=>[imgId,fill,strat,strat===1?detailW:0,fill==='poster'?$('posterK').value:0,
   strat===4||strat===10?focusX+','+focusY:0,strat===9?paintVersion:0].join('|');
 const estValid=()=>!!est&&est.key===estKey();
-const planP=t=>t>=planD?Infinity:curve==='exp'?4*Math.pow(planN/4,t/planD):4+(planN-4)*t/planD; // points due at time t
-const planInv=n=>n<=4?0:n>=planN?planD:curve==='exp'?planD*Math.log(n/4)/Math.log(planN/4):planD*(n-4)/(planN-4);
+// exponential with offset: P(t) = 4 + c·(e^(k·t) − 1), chosen so that P(FIRST_STEP) = 5 (first point after 0.5 s)
+// and P(D) = N. Starts roughly linear, then every doubling takes about the same time. k = 0 → plain linear.
+const FIRST_STEP=.5;
+let planC=0,planK=0;
+function fitCurve(){
+  planK=0;planC=0;
+  if(curve!=='exp'||planN-4<=planD/FIRST_STEP)return; // too few points for a curve that fast → linear
+  const f=k=>Math.expm1(k*planD)/Math.expm1(k*FIRST_STEP)-(planN-4); // increasing in k
+  let lo=0,hi=1;while(f(hi)<0)hi*=2;
+  for(let i=0;i<80;i++){const m=(lo+hi)/2;if(f(m)<0)lo=m;else hi=m}
+  planK=(lo+hi)/2;planC=1/Math.expm1(planK*FIRST_STEP);
+}
+const planP=t=>t>=planD?Infinity:planK?4+planC*Math.expm1(planK*t):4+(planN-4)*t/planD;   // points due at time t
+const planInv=n=>n<=4?0:n>=planN?planD:planK?Math.log1p((n-4)/planC)/planK:planD*(n-4)/(planN-4);
 function replan(){ // (re)derive the schedule and put the clock where the current point count sits on it
   if(!W)return;
   planExact=estValid();
   planN=Math.max(5,planExact?est.n:Math.round((flat?.35*(W+1)*(H+1):.3*W*H))); // rough fallback if settings changed mid-run
-  planD=Math.max(1,DURS[+$('dur').value]-($('autoRec').checked?REC_HOLD:0));
+  planD=Math.max(.5,durSec-($('autoRec').checked?REC_HOLD:0));
+  fitCurve();
   playT=planInv(ptCount);
 }
 // silent pre-run from scratch: same seed + same settings → exactly the point count of the real run
@@ -618,12 +644,13 @@ function runInserts(n,timeBudget){
 }
 function frame(now){
   if(!running)return;
-  const dt=Math.min(.1,(now-lastT)/1000);lastT=now;
+  // timed mode must follow wall-clock time exactly (a recording runs in real time), so only guard against huge gaps
+  const dt=Math.min(mode==='time'?1:.1,(now-lastT)/1000);lastT=now;
   let did;
   if(mode==='time'){
     // virtual clock: it only advances while the computation keeps up. When a frame can't insert all points
     // that are due, time stands still (and a recording pauses), so the curve – and the video length – stay exact.
-    const want=Math.ceil(planP(playT))-ptCount;           // Infinity once the time is up → finish
+    const want=Math.floor(planP(playT)+1e-9)-ptCount;     // Infinity once the time is up → finish
     did=want>0?runInserts(Math.min(want,1e9),28):0;
     if(did<want&&!done){if(rec&&rec.state==='recording')rec.pause()}
     else{if(rec&&rec.state==='paused')rec.resume();playT+=dt}
@@ -850,7 +877,8 @@ function startRec(){
   recChunks=[];rec.ondataavailable=e=>{if(e.data.size)recChunks.push(e.data)};
   rec.onstop=()=>{
     const type=rec.mimeType||recMime||'video/webm',blob=new Blob(recChunks,{type}),a=document.createElement('a');
-    a.download=`triangulation-${FILL_NAMES[fill].toLowerCase()}.${type.includes('mp4')?'mp4':'webm'}`;a.href=URL.createObjectURL(blob);a.click();
+    const d=new Date(),z=n=>String(n).padStart(2,'0'),stamp=`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`;
+    a.download=`triangulation-${FILL_NAMES[fill].toLowerCase()}-${stamp}.${type.includes('mp4')?'mp4':'webm'}`;a.href=URL.createObjectURL(blob);a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),10000);rec=null;
     $('record').textContent='● Video aufnehmen';$('record').classList.remove('rec');
   };
