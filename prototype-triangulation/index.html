@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Triangulation Restore</title>
+<style>
+:root{color-scheme:light dark;--bg:#f3f2ee;--panel:#fff;--text:#171717;--muted:#777;--line:#d8d6cf;--accent:#171717;--btn:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#111;--panel:#1b1b1b;--text:#f3f3f3;--muted:#aaa;--line:#333;--accent:#f0f0f0;--btn:#111}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:clamp(12px,2.2vw,28px)}
+.app{max-width:1450px;margin:auto}
+h1{margin:0;font-size:clamp(28px,4vw,48px);letter-spacing:-.04em}
+header p{margin:6px 0 20px;color:var(--muted);max-width:860px;line-height:1.45}
+.layout{display:grid;grid-template-columns:minmax(300px,370px) 1fr;gap:18px;align-items:start}
+.panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px}
+.panel{padding:18px;position:sticky;top:14px}
+.stage{padding:14px}
+.drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;min-height:76px;display:grid;place-items:center;text-align:center;overflow:hidden;background:rgba(127,127,127,.035)}
+.drop.over{border-color:var(--accent)}
+.fileInput{position:absolute;inset:0;width:100%;height:100%;opacity:.001;font-size:100px;cursor:pointer}
+.drop strong{display:block}.drop small{color:var(--muted)}
+.group{margin-top:18px}
+.group h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 11px}
+.control{margin-bottom:13px}
+.labelrow{display:flex;justify-content:space-between;gap:12px;font-size:14px;margin-bottom:5px}
+.value{color:var(--muted);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+select{width:100%;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text)}
+.checks{display:grid;gap:8px;font-size:14px}.checks label{display:flex;align-items:center;gap:8px}
+.buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
+button{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:11px;padding:11px;font:inherit;font-weight:650;cursor:pointer}
+button.primary{grid-column:1/-1;background:var(--accent);color:var(--btn);border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:default}
+.modeRow{display:flex;gap:8px}.modeRow button{flex:1;padding:8px}
+.modeRow button.active{background:var(--accent);color:var(--btn);border-color:var(--accent)}
+.status{margin-top:13px;color:var(--muted);font-size:13px;min-height:36px;line-height:1.4}
+.progress{height:8px;border-radius:999px;background:rgba(127,127,127,.16);overflow:hidden;margin-top:10px}
+.progress>div{height:100%;width:0;background:var(--accent);transition:width .15s ease}
+.hint{font-size:12px;line-height:1.45;color:var(--muted);margin-top:8px}
+.canvasWrap{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:14px}
+.mainCanvasBox{position:relative;display:grid;place-items:center;border-radius:13px;overflow:hidden;min-height:560px;
+  background:repeating-conic-gradient(rgba(127,127,127,.18) 0 25%,transparent 0 50%) 0 0/20px 20px}
+.canvasStack{position:relative;line-height:0}
+.canvasStack canvas{display:block}
+#result{max-width:100%;max-height:calc(100vh - 120px);image-rendering:pixelated}
+#overlay{position:absolute;inset:0;pointer-events:none}
+#original{position:absolute;inset:0;width:100%;height:100%;display:none;image-rendering:pixelated}
+.empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#999;padding:24px}
+.empty strong{display:block;color:var(--text);margin-bottom:5px}
+.previewCol{display:grid;gap:12px;align-content:start}
+.previewCard{background:rgba(127,127,127,.055);border-radius:13px;padding:10px}
+.previewCard h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2px 0 8px}
+.previewCard canvas{display:block;width:100%;height:auto;border-radius:8px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;font-size:12px;color:var(--muted)}
+.stats b{display:block;color:var(--text);font-size:16px;font-variant-numeric:tabular-nums}
+@media(max-width:950px){.layout{grid-template-columns:1fr}.panel{position:static}.canvasWrap{grid-template-columns:1fr 220px}.mainCanvasBox{min-height:420px}}
+@media(max-width:650px){.canvasWrap{grid-template-columns:1fr}.previewCol{grid-template-columns:1fr 1fr}.stats{grid-column:1/-1}.mainCanvasBox{min-height:300px}.buttons{grid-template-columns:1fr}.primary{grid-column:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><h1>Triangulation Restore</h1><p>Das Bild beginnt als zwei Dreiecke. Schritt für Schritt wird genau dort ein neuer Eckpunkt gesetzt, wo das Dreiecksnetz am stärksten vom Original abweicht; das Netz bleibt dabei eine Delaunay-Triangulierung. Die Farben werden innerhalb jedes Dreiecks linear interpoliert – bis jedes Pixel exakt stimmt.</p></header>
+<div class="layout">
+<aside class="panel">
+  <div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*"><div><strong>Bild auswählen</strong><small>Antippen, hineinziehen oder einfügen (Strg+V)</small></div></div>
+
+  <div class="group"><h2>Arbeitsauflösung</h2>
+    <div class="control"><select id="maxSize">
+      <option value="256">max. 256 px</option>
+      <option value="512" selected>max. 512 px</option>
+      <option value="1024">max. 1024 px</option>
+      <option value="2048">max. 2048 px</option>
+      <option value="4096">Original (bis 4096 px)</option>
+    </select></div>
+    <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
+  </div>
+
+  <div class="group"><h2>Tempo</h2>
+    <div class="modeRow"><button id="modeConst" class="active">Konstant</button><button id="modeGeo">Mitwachsend</button></div>
+    <div class="control" style="margin-top:13px"><div class="labelrow"><label for="speed">Geschwindigkeit</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0" max="100" step="1" value="45"></div>
+    <div class="hint" id="speedHint"></div>
+    <div class="checks" style="margin-top:10px">
+      <label><input type="checkbox" id="showMesh" checked> Dreiecksnetz anzeigen</label>
+      <label><input type="checkbox" id="showPoints"> Neue Punkte hervorheben</label>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="primary" id="play" disabled>Start</button>
+    <button id="step" disabled>+1 Punkt</button>
+    <button id="step100" disabled>+100 Punkte</button>
+    <button id="reset" disabled>Neu starten</button>
+    <button id="finish" disabled>Sofort fertig</button>
+    <button id="compare" disabled>Original (halten)</button>
+    <button id="download" disabled>PNG speichern</button>
+  </div>
+  <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
+  <div class="progress"><div id="progressBar"></div></div>
+  <div class="buttons" style="margin-top:12px"><button id="demo" style="grid-column:1/-1">Demo-Bild laden</button></div>
+</aside>
+
+<main class="stage"><div class="canvasWrap">
+  <div class="mainCanvasBox" id="box">
+    <div class="canvasStack" id="stack"><canvas id="result" width="2" height="2"></canvas><canvas id="original"></canvas><canvas id="overlay"></canvas></div>
+    <div class="empty" id="empty"><div><strong>Noch kein Bild</strong>Bild laden und auf „Start“ tippen.</div></div>
+  </div>
+  <div class="previewCol">
+    <div class="previewCard"><h3>Original</h3><canvas id="source" width="2" height="2"></canvas></div>
+    <div class="previewCard"><h3>Fehlerkarte</h3><canvas id="errmap" width="2" height="2"></canvas></div>
+    <div class="previewCard stats">
+      <div>Punkte<b id="statPoints">–</b></div>
+      <div>Dreiecke<b id="statTris">–</b></div>
+      <div>Pixel exakt<b id="statExact">–</b></div>
+      <div>PSNR<b id="statPsnr">–</b></div>
+      <div>Punkte / s<b id="statRate">–</b></div>
+      <div>Anteil Ecken<b id="statVert">–</b></div>
+    </div>
+  </div>
+</div></main>
+</div></div>
+
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+const result=$('result'),rctx=result.getContext('2d'),overlay=$('overlay'),octx=overlay.getContext('2d');
+const origCanvas=$('original'),source=$('source'),errmap=$('errmap');
+const nf=new Intl.NumberFormat('de-DE');
+
+/* ---------- state ---------- */
+let W=0,H=0,SRC=null,OUT=null,outImg=null,loadedImage=null;
+// triangles: V = vertex ids (3 per tri, CCW), N = neighbour tri across edge i (V[i]->V[i+1]), -1 = border
+let V,N,ERR,CAND,STAMP,MARK,triCount=0,triCap=0;
+let PX,PY,ptCount=0,ptCap=0;
+let hKey,hTri,hStamp,hSize=0,hCap=0;
+let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentPts=[],rateHist=[];
+let lastStatT=0,meshDirty=true;
+
+/* ---------- geometry (integer coordinates → exact in doubles) ---------- */
+const orient=(ax,ay,bx,by,cx,cy)=>(bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+function inCircle(a,b,c,d){
+  const dx=PX[d],dy=PY[d];
+  const adx=PX[a]-dx,ady=PY[a]-dy,bdx=PX[b]-dx,bdy=PY[b]-dy,cdx=PX[c]-dx,cdy=PY[c]-dy;
+  const ad=adx*adx+ady*ady,bd=bdx*bdx+bdy*bdy,cd=cdx*cdx+cdy*cdy;
+  return adx*(bdy*cd-bd*cdy)-ady*(bdx*cd-bd*cdx)+ad*(bdx*cdy-bdy*cdx);
+}
+
+/* ---------- storage ---------- */
+function growTris(min){
+  if(min<=triCap)return;let cap=Math.max(1024,triCap*2);while(cap<min)cap*=2;
+  const g=(A,T,n)=>{const B=new T(n);if(A)B.set(A);return B};
+  V=g(V,Int32Array,cap*3);N=g(N,Int32Array,cap*3);ERR=g(ERR,Float64Array,cap);CAND=g(CAND,Int32Array,cap);
+  STAMP=g(STAMP,Int32Array,cap);MARK=g(MARK,Int32Array,cap);triCap=cap;
+}
+function addPoint(x,y){
+  if(ptCount>=ptCap){const cap=Math.max(1024,ptCap*2);const a=new Int32Array(cap),b=new Int32Array(cap);if(PX){a.set(PX);b.set(PY)}PX=a;PY=b;ptCap=cap}
+  PX[ptCount]=x;PY[ptCount]=y;return ptCount++;
+}
+function newTri(){growTris(triCount+1);return triCount++}
+function setTri(t,a,b,c,na,nb,nc){const k=3*t;V[k]=a;V[k+1]=b;V[k+2]=c;N[k]=na;N[k+1]=nb;N[k+2]=nc;STAMP[t]++;touch(t)}
+function replaceNb(n,oldT,newT){if(n<0)return;const k=3*n;if(N[k]===oldT)N[k]=newT;else if(N[k+1]===oldT)N[k+1]=newT;else N[k+2]=newT}
+
+/* ---------- max-heap of triangles (lazy invalidation via stamps) ---------- */
+function hPush(key,t){
+  if(hSize>=hCap){const cap=Math.max(4096,hCap*2);const k=new Float64Array(cap),a=new Int32Array(cap),s=new Int32Array(cap);if(hKey){k.set(hKey);a.set(hTri);s.set(hStamp)}hKey=k;hTri=a;hStamp=s;hCap=cap}
+  let i=hSize++;const st=STAMP[t];
+  while(i>0){const p=(i-1)>>1;if(hKey[p]>=key)break;hKey[i]=hKey[p];hTri[i]=hTri[p];hStamp[i]=hStamp[p];i=p}
+  hKey[i]=key;hTri[i]=t;hStamp[i]=st;
+}
+function hPopValid(){ // returns tri id or -1
+  while(hSize>0){
+    const t=hTri[0],st=hStamp[0];
+    const lk=hKey[--hSize],lt=hTri[hSize],ls=hStamp[hSize];
+    let i=0;
+    if(hSize>0){
+      for(;;){let c=2*i+1;if(c>=hSize)break;if(c+1<hSize&&hKey[c+1]>hKey[c])c++;if(hKey[c]<=lk)break;hKey[i]=hKey[c];hTri[i]=hTri[c];hStamp[i]=hStamp[c];i=c}
+      hKey[i]=lk;hTri[i]=lt;hStamp[i]=ls;
+    }
+    if(STAMP[t]===st&&ERR[t]>0)return t;
+  }
+  return -1;
+}
+
+/* ---------- rasterise one triangle: paint output + find worst pixel ---------- */
+function scanTri(t){
+  const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
+  const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
+  const area=orient(ax,ay,bx,by,cx,cy);
+  const ia=(ay*W+ax)*4,ib=(by*W+bx)*4,ic=(cy*W+cx)*4;
+  const r0=SRC[ia],g0=SRC[ia+1],b0=SRC[ia+2],a0=SRC[ia+3];
+  const r1=SRC[ib],g1=SRC[ib+1],b1=SRC[ib+2],a1=SRC[ib+3];
+  const r2=SRC[ic],g2=SRC[ic+1],b2=SRC[ic+2],a2=SRC[ic+3];
+  const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
+  // edge functions: w0 = orient(b,c,p) (weight of a), w1 = orient(c,a,p), w2 = orient(a,b,p)
+  const e0x=by-cy,e1x=cy-ay,e2x=ay-by; // d/dx of w
+  let sum=0,best=0,bestI=-1;
+  for(let y=minY;y<=maxY;y++){
+    let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
+    let i=(y*W+minX)*4,inside=false;
+    for(let x=minX;x<=maxX;x++,i+=4,w0+=e0x,w1+=e1x,w2+=e2x){
+      if(w0<0||w1<0||w2<0){if(inside)break;continue}
+      inside=true;
+      const r=Math.round((w0*r0+w1*r1+w2*r2)/area),g=Math.round((w0*g0+w1*g1+w2*g2)/area),
+            bb=Math.round((w0*b0+w1*b1+w2*b2)/area),al=Math.round((w0*a0+w1*a1+w2*a2)/area);
+      OUT[i]=r;OUT[i+1]=g;OUT[i+2]=bb;OUT[i+3]=al;
+      const e=Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3]);
+      if(e){sum+=e;if(e>best){best=e;bestI=i>>2}}
+    }
+  }
+  // priority: total error of the triangle (big, wrong triangles first → coarse to fine)
+  ERR[t]=sum;CAND[t]=bestI;
+  if(sum>0)hPush(sum,t);
+}
+
+/* ---------- incremental Delaunay insertion ---------- */
+let touched=[];
+function touch(t){if(MARK[t]!==insertId){MARK[t]=insertId;touched.push(t)}}
+const stack=[];
+function legalize(){
+  while(stack.length){
+    const t=stack.pop(),k=3*t,u=N[k];
+    if(u<0)continue;
+    const a=V[k],b=V[k+1],p=V[k+2],ku=3*u;
+    const j=N[ku]===t?0:N[ku+1]===t?1:2;
+    const d=V[ku+(j+2)%3];
+    if(inCircle(a,b,p,d)<=0)continue;
+    const nad=N[ku+(j+1)%3],ndb=N[ku+(j+2)%3],nbp=N[k+1],npa=N[k+2];
+    setTri(t,a,d,p,nad,u,npa);
+    setTri(u,d,b,p,ndb,nbp,t);
+    replaceNb(nad,u,t);replaceNb(nbp,t,u);
+    stack.push(t,u);
+  }
+}
+function insert(t){
+  const pix=CAND[t],x=pix%W,y=(pix/W)|0;
+  const k=3*t;
+  // rotate so that we know which edge (if any) contains p
+  const v0=V[k],v1=V[k+1],v2=V[k+2];
+  const o=[orient(PX[v0],PY[v0],PX[v1],PY[v1],x,y),orient(PX[v1],PY[v1],PX[v2],PY[v2],x,y),orient(PX[v2],PY[v2],PX[v0],PY[v0],x,y)];
+  const p=addPoint(x,y);
+  insertId++;touched.length=0;
+  const e=o[0]===0?0:o[1]===0?1:o[2]===0?2:-1;
+  if(e<0){
+    const a=v0,b=v1,c=v2,nab=N[k],nbc=N[k+1],nca=N[k+2];
+    const t1=newTri(),t2=newTri();
+    setTri(t,a,b,p,nab,t1,t2);setTri(t1,b,c,p,nbc,t2,t);setTri(t2,c,a,p,nca,t,t1);
+    replaceNb(nbc,t,t1);replaceNb(nca,t,t2);
+    stack.push(t,t1,t2);
+  }else{
+    const a=V[k+e],b=V[k+(e+1)%3],c=V[k+(e+2)%3];
+    const nbc=N[k+(e+1)%3],nca=N[k+(e+2)%3],u=N[k+e];
+    const tB=newTri();
+    if(u>=0){
+      const ku=3*u,j=N[ku]===t?0:N[ku+1]===t?1:2;
+      const d=V[ku+(j+2)%3],nad=N[ku+(j+1)%3],ndb=N[ku+(j+2)%3];
+      const uB=newTri();
+      setTri(t,b,c,p,nbc,tB,uB);setTri(tB,c,a,p,nca,u,t);
+      setTri(u,a,d,p,nad,uB,tB);setTri(uB,d,b,p,ndb,t,u);
+      replaceNb(nca,t,tB);replaceNb(ndb,u,uB);
+      stack.push(t,tB,u,uB);
+    }else{
+      setTri(t,b,c,p,nbc,tB,-1);setTri(tB,c,a,p,nca,-1,t);
+      replaceNb(nca,t,tB);
+      stack.push(t,tB);
+    }
+  }
+  legalize();
+  for(let i=0;i<touched.length;i++)scanTri(touched[i]);
+  recentPts.push(p);
+}
+
+/* ---------- setup ---------- */
+function initMesh(){
+  triCount=0;ptCount=0;hSize=0;insertId=0;done=false;carry=0;recentPts=[];
+  growTris(Math.max(1024,Math.min(W*H*2+16,1<<16)));
+  STAMP.fill(0);MARK.fill(-1);
+  OUT.fill(0);
+  const p0=addPoint(0,0),p1=addPoint(W-1,0),p2=addPoint(W-1,H-1),p3=addPoint(0,H-1);
+  // CCW with respect to orient(): in image coords (y down) this is clockwise on screen, which is fine
+  const t0=newTri(),t1=newTri();
+  const cw=orient(0,0,W-1,0,W-1,H-1)>0;
+  insertId++;touched.length=0;
+  if(cw){setTri(t0,p0,p1,p2,-1,-1,t1);setTri(t1,p0,p2,p3,t0,-1,-1)}
+  else{setTri(t0,p0,p2,p1,t1,-1,-1);setTri(t1,p0,p3,p2,-1,-1,t0)}
+  scanTri(t0);scanTri(t1);
+  meshDirty=true;
+}
+
+function loadImage(img){
+  loadedImage=img;
+  const maxS=+$('maxSize').value,iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;
+  const s=Math.min(1,maxS/Math.max(iw,ih));
+  W=Math.max(2,Math.round(iw*s));H=Math.max(2,Math.round(ih*s));
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const cx=c.getContext('2d',{willReadFrequently:true});cx.imageSmoothingQuality='high';cx.drawImage(img,0,0,W,H);
+  SRC=cx.getImageData(0,0,W,H).data;
+  result.width=W;result.height=H;outImg=rctx.createImageData(W,H);OUT=outImg.data;
+  origCanvas.width=W;origCanvas.height=H;origCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(SRC),W,H),0,0);
+  source.width=W;source.height=H;source.getContext('2d').drawImage(origCanvas,0,0);
+  const es=Math.max(1,Math.ceil(Math.max(W,H)/260));errmap.width=Math.ceil(W/es);errmap.height=Math.ceil(H/es);
+  V=N=ERR=CAND=STAMP=MARK=null;triCap=0;
+  initMesh();
+  $('empty').style.display='none';
+  ['play','step','step100','reset','finish','compare','download'].forEach(id=>$(id).disabled=false);
+  fitCanvas();present(true);
+  setStatus(`Bereit: ${W}×${H} px = ${nf.format(W*H)} Pixel. Start mit 4 Eckpunkten.`);
+}
+
+/* ---------- speed ---------- */
+function speedValue(){const s=+$('speed').value/100;
+  return mode==='const'?Math.round(Math.pow(10,s*6)) // 1 … 1 000 000 Punkte/s
+                      :0.01*Math.pow(10,s*2.7);    // 1 % … ~500 % pro s
+}
+function currentRate(){const v=speedValue();return mode==='const'?v:Math.max(1,ptCount*v)}
+function syncSpeed(){
+  const v=speedValue();
+  $('speedValue').textContent=mode==='const'?`${nf.format(v)} Punkte/s`:`+${v<1?(v*100).toFixed(v<.1?1:0):nf.format(Math.round(v*100))} %/s`;
+  $('speedHint').textContent=mode==='const'?'Feste Anzahl neuer Punkte pro Sekunde. Am Ende braucht das Feinste sehr viele Punkte.'
+    :'Punktzahl wächst proportional – jede Verdopplung des Details dauert gleich lang. Grob und fein laufen gleich „gefühlt schnell“.';
+}
+$('speed').addEventListener('input',syncSpeed);
+$('modeConst').onclick=()=>{mode='const';$('modeConst').classList.add('active');$('modeGeo').classList.remove('active');syncSpeed()};
+$('modeGeo').onclick=()=>{mode='geo';$('modeGeo').classList.add('active');$('modeConst').classList.remove('active');syncSpeed()};
+syncSpeed();
+
+/* ---------- main loop ---------- */
+function runInserts(n,timeBudget){
+  const t0=performance.now();let c=0;
+  while(c<n){
+    const t=hPopValid();
+    if(t<0){done=true;break}
+    insert(t);c++;
+    if((c&63)===0&&performance.now()-t0>timeBudget)break;
+  }
+  return c;
+}
+function frame(now){
+  if(!running)return;
+  const dt=Math.min(.1,(now-lastT)/1000);lastT=now;
+  carry+=currentRate()*dt;
+  const want=Math.floor(carry);
+  const did=want>0?runInserts(want,28):0;
+  carry-=did;if(did<want)carry=Math.min(carry,currentRate()*.05+1); // don't pile up backlog
+  rateHist.push([now,did]);while(rateHist.length&&now-rateHist[0][0]>1000)rateHist.shift();
+  present(false);
+  if(done){finish();return}
+  requestAnimationFrame(frame);
+}
+function setRunning(on){
+  running=on&&!done;$('play').textContent=running?'Pause':(done?'Fertig ✓':(ptCount>4?'Weiter':'Start'));
+  if(running){lastT=performance.now();requestAnimationFrame(frame)}
+}
+function finish(){
+  running=false;done=true;present(true);
+  $('play').textContent='Fertig ✓';
+  setStatus(`Pixelgenau rekonstruiert mit ${nf.format(ptCount)} Punkten (${(ptCount/(W*H)*100).toFixed(1)} % der Pixel) und ${nf.format(triCount)} Dreiecken.`);
+}
+
+/* ---------- presentation ---------- */
+function present(force){
+  rctx.putImageData(outImg,0,0);
+  drawOverlay();
+  const now=performance.now();
+  if(force||now-lastStatT>250){lastStatT=now;updateStats()}
+}
+function fitCanvas(){
+  if(!W)return;
+  const box=$('box'),bw=box.clientWidth-8,bh=Math.max(300,Math.min(window.innerHeight-120,box.clientHeight||560)-8);
+  const s=Math.min(bw/W,bh/H);
+  const cw=Math.max(1,Math.floor(W*s)),ch=Math.max(1,Math.floor(H*s));
+  result.style.width=cw+'px';result.style.height=ch+'px';
+  const dpr=window.devicePixelRatio||1;
+  overlay.width=Math.round(cw*dpr);overlay.height=Math.round(ch*dpr);overlay.style.width=cw+'px';overlay.style.height=ch+'px';
+  drawOverlay();
+}
+window.addEventListener('resize',fitCanvas);
+function drawOverlay(){
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  if(!W||!V)return;
+  const sx=overlay.width/W,sy=overlay.height/H,ox=.5*sx,oy=.5*sy; // vertices sit on pixel centres
+  if($('showMesh').checked&&triCount<60000){
+    const dens=Math.min(1,overlay.width*overlay.height/(triCount*40+1));
+    octx.lineWidth=Math.max(.5,Math.min(1,dens))*(window.devicePixelRatio||1)*.8;
+    octx.strokeStyle=`rgba(255,255,255,${.12+.4*dens})`;
+    octx.beginPath();
+    for(let t=0;t<triCount;t++){const k=3*t;
+      for(let e=0;e<3;e++){const n=N[k+e];if(n>t||n<0){const a=V[k+e],b=V[k+(e+1)%3];
+        octx.moveTo(PX[a]*sx+ox,PY[a]*sy+oy);octx.lineTo(PX[b]*sx+ox,PY[b]*sy+oy)}}}
+    octx.stroke();
+    octx.strokeStyle=`rgba(0,0,0,${.08+.25*dens})`;octx.lineWidth*=.5;octx.stroke();
+  }
+  if($('showPoints').checked&&recentPts.length){
+    const r=Math.max(1.5,Math.min(4,sx*.6))*(window.devicePixelRatio||1)*.7;
+    octx.fillStyle='#ff3b2f';octx.beginPath();
+    const from=Math.max(0,recentPts.length-3000);
+    for(let i=from;i<recentPts.length;i++){const p=recentPts[i];octx.moveTo(PX[p]*sx+ox+r,PY[p]*sy+oy);octx.arc(PX[p]*sx+ox,PY[p]*sy+oy,r,0,6.2832)}
+    octx.fill();
+  }
+  recentPts.length=0;
+}
+function updateStats(){
+  if(!SRC)return;
+  let exact=0,se=0;const n=W*H;
+  const ew=errmap.width,eh=errmap.height,es=Math.ceil(W/ew),emData=new Float32Array(ew*eh);
+  for(let i=0,p=0;p<n;p++,i+=4){
+    const dr=OUT[i]-SRC[i],dg=OUT[i+1]-SRC[i+1],db=OUT[i+2]-SRC[i+2],da=OUT[i+3]-SRC[i+3];
+    const e=dr*dr+dg*dg+db*db+da*da;se+=e;if(e===0)exact++;
+    else{const x=p%W,y=(p/W)|0;emData[((y/es)|0)*ew+((x/es)|0)]+=Math.sqrt(e)}
+  }
+  const mse=se/(n*4),psnr=mse===0?Infinity:10*Math.log10(255*255/mse);
+  $('statPoints').textContent=nf.format(ptCount);
+  $('statTris').textContent=nf.format(triCount);
+  $('statExact').textContent=(exact/n*100).toFixed(exact===n?0:1)+' %';
+  $('statPsnr').textContent=psnr===Infinity?'∞ dB':psnr.toFixed(1)+' dB';
+  $('statVert').textContent=(ptCount/n*100).toFixed(ptCount/n<.01?2:1)+' %';
+  let r=0;for(const h of rateHist)r+=h[1];$('statRate').textContent=running?nf.format(r):'–';
+  $('progressBar').style.width=(exact/n*100)+'%';
+  // error heat map
+  const ectx=errmap.getContext('2d'),im=ectx.createImageData(ew,eh),d=im.data,norm=1/(es*es*60);
+  for(let i=0;i<ew*eh;i++){const v=Math.min(1,Math.sqrt(emData[i]*norm));const k=i*4;
+    d[k]=255*Math.min(1,v*2);d[k+1]=255*Math.max(0,v*2-1)*.85;d[k+2]=40*(1-v);d[k+3]=255}
+  ectx.putImageData(im,0,0);
+  if(running)setStatus(`Läuft … ${nf.format(ptCount)} Punkte, ${(exact/n*100).toFixed(1)} % der Pixel bereits exakt.`);
+}
+function setStatus(t){$('status').textContent=t}
+
+/* ---------- controls ---------- */
+$('play').onclick=()=>{if(done)return;setRunning(!running)};
+$('step').onclick=()=>{setRunning(false);runInserts(1,1e9);if(done)finish();else present(true)};
+$('step100').onclick=()=>{setRunning(false);runInserts(100,1e9);if(done)finish();else present(true)};
+$('reset').onclick=()=>{setRunning(false);initMesh();present(true);setRunning(false);setStatus('Zurückgesetzt auf 4 Eckpunkte.')};
+$('finish').onclick=()=>{
+  setRunning(false);setStatus('Rechne bis pixelgenau …');
+  const chunk=()=>{runInserts(1e9,60);present(false);if(done)finish();else{setStatus(`Rechne … ${nf.format(ptCount)} Punkte`);setTimeout(chunk,0)}};
+  setTimeout(chunk,20);
+};
+const showOrig=on=>{origCanvas.style.display=on?'block':'none';overlay.style.visibility=on?'hidden':'visible'};
+const cmp=$('compare');
+cmp.addEventListener('pointerdown',e=>{e.preventDefault();showOrig(true)});
+['pointerup','pointerleave','pointercancel'].forEach(t=>cmp.addEventListener(t,()=>showOrig(false)));
+$('download').onclick=()=>{const a=document.createElement('a');a.download=`triangulation-${ptCount}pts.png`;a.href=result.toDataURL('image/png');a.click()};
+$('showMesh').onchange=drawOverlay;$('showPoints').onchange=drawOverlay;
+$('maxSize').onchange=()=>{if(loadedImage){setRunning(false);loadImage(loadedImage)}};
+
+function loadFile(file){
+  if(!file||!file.type.startsWith('image/'))return;
+  setRunning(false);setStatus('Bild wird geladen …');
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{loadImage(img);URL.revokeObjectURL(url)};
+  img.onerror=()=>setStatus('Bild konnte nicht gelesen werden (ggf. als JPEG/PNG exportieren).');
+  img.src=url;
+}
+const dz=$('dropZone');
+$('fileInput').addEventListener('change',e=>{loadFile(e.target.files&&e.target.files[0]);e.target.value=''});
+['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();dz.classList.add('over')}));
+['dragleave','drop'].forEach(t=>document.addEventListener(t,()=>dz.classList.remove('over')));
+document.addEventListener('drop',e=>{e.preventDefault();loadFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0])});
+document.addEventListener('paste',e=>{const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));if(it)loadFile(it.getAsFile())});
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'&&e.target.type!=='range'||e.target.tagName==='SELECT')return;if(e.code==='Space'&&SRC){e.preventDefault();$('play').click()}});
+
+$('demo').onclick=()=>{
+  const c=document.createElement('canvas');c.width=640;c.height=440;const g=c.getContext('2d');
+  const sky=g.createLinearGradient(0,0,0,440);sky.addColorStop(0,'#1d2b64');sky.addColorStop(.55,'#f8736a');sky.addColorStop(1,'#fcd581');g.fillStyle=sky;g.fillRect(0,0,640,440);
+  g.fillStyle='#ffe9a8';g.beginPath();g.arc(430,250,70,0,7);g.fill();
+  const mtn=(col,pts)=>{g.fillStyle=col;g.beginPath();g.moveTo(0,440);pts.forEach(p=>g.lineTo(p[0],p[1]));g.lineTo(640,440);g.fill()};
+  mtn('#5b3a6b',[[0,300],[90,210],[170,280],[260,180],[360,300],[470,230],[560,290],[640,240]]);
+  mtn('#2e1f3f',[[0,360],[120,300],[220,350],[330,290],[440,360],[540,320],[640,370]]);
+  g.fillStyle='#0f0a17';g.fillRect(0,400,640,40);
+  g.font='bold 34px sans-serif';g.fillStyle='rgba(255,255,255,.9)';g.fillText('Δ Triangulation',24,58);
+  for(let i=0;i<70;i++){g.fillStyle=`rgba(255,255,255,${Math.random()*.8})`;g.fillRect(Math.random()*640,Math.random()*170+70,1.5,1.5)}
+  const img=new Image();img.onload=()=>loadImage(img);img.src=c.toDataURL();
+};
+})();
+</script>
+</body>
+</html>
