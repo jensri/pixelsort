@@ -102,6 +102,7 @@ button:disabled{opacity:.45;cursor:default}
   <details class="sec" data-sec="look"><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
     <div class="subhead">Füllung</div>
     <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="flat">Einfarbig</button><button data-fill="mosaic">Mosaik</button><button data-fill="poster">Poster</button><button data-fill="kolor">Kolorieren</button><button data-fill="glass">Bleiglas</button><button data-fill="blobs">Blobs</button><button data-fill="crystal">Kristall</button></div>
+    <div class="hint" style="margin-top:6px">Links: Punkte auf Pixelmitten · rechts: auf Pixelecken. Wechsel innerhalb einer Spalte färbt nur neu ein, zwischen den Spalten startet es neu.</div>
     <div class="control" id="posterCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="posterK">Farben</label><span class="value" id="posterKValue"></span></div><input id="posterK" type="range" min="3" max="32" step="1" value="8"></div>
     <div class="hint" id="fillHint"></div>
     <div class="subhead">Reihenfolge</div>
@@ -496,8 +497,8 @@ function scanFlat(t){
         const L=q=>LUM[Math.min(H-1,PY[q])*W+Math.min(W-1,PX[q])],l0=L(a),l1=L(b),l2=L(c);
         const x0c=PX[a],y0c=PY[a],ar=orient(PX[a],PY[a],PX[b],PY[b],PX[c],PY[c]);
         const gx=((l1-l0)*(PY[c]-y0c)-(l2-l0)*(PY[b]-y0c))/ar,gy=((l2-l0)*(PX[b]-x0c)-(l1-l0)*(PX[c]-x0c))/ar;
-        const S=1.6,nx=-gx*S,ny=-gy*S,nl=Math.hypot(nx,ny,1),dot=(nx*-.45+ny*-.55+.7)/nl/Math.hypot(.45,.55,.7);
-        const sh=1+1.1*(dot-.7/Math.hypot(.45,.55,.7));
+        const S=1.1,nx=-gx*S,ny=-gy*S,nl=Math.hypot(nx,ny,1),dot=(nx*-.45+ny*-.55+.7)/nl/Math.hypot(.45,.55,.7);
+        const sh=Math.max(.55,Math.min(1.45,1+.9*(dot-.7/Math.hypot(.45,.55,.7))));
         mr=Math.max(0,Math.min(255,Math.round(mr*sh)));mg=Math.max(0,Math.min(255,Math.round(mg*sh)));mb=Math.max(0,Math.min(255,Math.round(mb*sh)));
       }
       trackReset((PX[a]+PX[b]+PX[c])/3-.5,(PY[a]+PY[b]+PY[c])/3-.5); // centroid in pixel-index coordinates
