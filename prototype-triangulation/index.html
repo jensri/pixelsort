@@ -147,7 +147,14 @@ button:disabled{opacity:.45;cursor:default}
         <input id="dur" type="text" inputmode="decimal" value="2:00" list="durPresets" autocomplete="off" spellcheck="false"
           style="width:100%;font:inherit;font-variant-numeric:tabular-nums;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text)">
         <datalist id="durPresets"><option value="0:10"><option value="0:30"><option value="1:00"><option value="2:00"><option value="3:00"><option value="5:00"></datalist></div>
-      <div class="modeRow"><button id="curveExp" class="active">Exponentiell</button><button id="curveLin">Linear</button></div>
+      <div class="control"><div class="labelrow"><label for="curveA">Kurve</label><span class="value" id="curveAValue"></span></div>
+        <input id="curveA" type="range" min="-12" max="12" step="0.5" value="4">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:2px"><span>früh viel</span><span>linear</span><span>spät viel</span></div>
+        <svg id="curvePlot" viewBox="0 0 100 44" preserveAspectRatio="none" style="width:100%;height:56px;margin-top:6px;display:block;border-radius:8px;background:rgba(127,127,127,.08)">
+          <line x1="0" y1="42" x2="100" y2="2" stroke="currentColor" stroke-opacity=".18" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>
+          <path id="curvePath" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div class="hint" id="curveInfo" style="margin-top:4px"></div></div>
       <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="autoRec"> Beim Start Video aufnehmen</label></div>
     </div>
     <div class="hint" id="speedHint"></div>
@@ -721,16 +728,23 @@ function parseDur(txt){
 }
 let durSec=120;
 const fmtDur=d=>{const m=Math.floor(d/60),sec=d-m*60;return `${m}:${sec<10?'0':''}${+sec.toFixed(2)}`.replace('.',',')};
-let curve='lin';
+let curveA=4; // steepness a of P(t) = 4 + (N−4)·(e^(a·t/D) − 1)/(e^a − 1): >0 late-heavy, 0 linear, <0 early-heavy
 function syncSpeed(){
   $('speedCtl').style.display=mode==='time'?'none':'';$('timeCtl').style.display=mode==='time'?'':'none';
   ['Const','Geo','Time'].forEach(m=>$('mode'+m).classList.toggle('active',mode===m.toLowerCase()));
-  $('curveExp').classList.toggle('active',curve==='exp');$('curveLin').classList.toggle('active',curve==='lin');
+  $('curveAValue').textContent=curveA===0?'linear':(curveA>0?'+':'−')+String(Math.abs(curveA)).replace('.',',');
+  { // shape preview (normalised, linear axes) + a few readings
+    const f=u=>curveA?Math.expm1(curveA*u)/Math.expm1(curveA):u;let d='';
+    for(let q=0;q<=50;q++){const u=q/50;d+=(q?'L':'M')+(u*100).toFixed(2)+','+(42-40*f(u)).toFixed(2)}
+    $('curvePath').setAttribute('d',d);
+    const pc=u=>{const v=f(u)*100;return v<1?v.toFixed(1).replace('.',','):Math.round(v)};
+    $('curveInfo').textContent=`Nach 25 % der Zeit ${pc(.25)} % der Punkte, nach 50 % ${pc(.5)} %, nach 90 % ${pc(.9)} %.`;
+  }
   if(mode==='time'){
     const pd=parseDur($('dur').value);$('dur').style.borderColor=pd?'':'#e5332a';
     if(pd)durSec=pd;$('durValue').textContent=pd?`= ${nf.format(+pd.toFixed(2))} s`:'ungültig (z. B. 3:21)';
     const e=estValid()?`Benötigt genau ${nf.format(est.n)} Punkte (vorab berechnet in ${(est.ms/1000).toFixed(1)} s).`:'Die nötige Punktzahl wird beim Start in einem stillen Vorlauf exakt berechnet.';
-    $('speedHint').textContent=`${e} ${curve==='exp'?'Exponentiell: der erste neue Punkt kommt nach 0,5 s, danach beschleunigt es – jede Verdopplung dauert etwa gleich lang, grob und fein bekommen gleich viel Zeit.':'Linear: gleich viele neue Punkte pro Sekunde – die groben Schritte fliegen in den ersten Sekunden vorbei.'} Mit Aufnahme ist das Video genau so lang (inkl. ${String(REC_HOLD).replace('.',',')} s Standbild).`;
+    $('speedHint').textContent=`${e} Kurve nach rechts: grobe Stufen dauern länger, das pixelgenaue Finish geht schnell. Nach links: das Bild steht früh, das Finish zieht sich ruhig hin. Mit Aufnahme ist das Video genau so lang (inkl. ${String(REC_HOLD).replace('.',',')} s Standbild).`;
     return;
   }
   const v=speedValue();
@@ -741,7 +755,7 @@ function syncSpeed(){
 $('speed').addEventListener('input',syncSpeed);
 function setMode(m){mode=m;syncSpeed();if(m==='time'&&running)replan()}
 $('modeConst').onclick=()=>setMode('const');$('modeGeo').onclick=()=>setMode('geo');$('modeTime').onclick=()=>setMode('time');
-$('curveExp').onclick=()=>{curve='exp';syncSpeed();replan()};$('curveLin').onclick=()=>{curve='lin';syncSpeed();replan()};
+$('curveA').addEventListener('input',()=>{curveA=+$('curveA').value;syncSpeed();if(running)replan()});
 $('dur').addEventListener('input',()=>{syncSpeed();if(running)replan()});
 $('dur').addEventListener('change',()=>{const pd=parseDur($('dur').value);if(pd)$('dur').value=fmtDur(pd).replace(',','.');syncSpeed()});
 
@@ -750,20 +764,19 @@ $('dur').addEventListener('change',()=>{const pd=parseDur($('dur').value);if(pd)
 const estKey=()=>[imgId,fill,strat,strat===1?detailW:0,fill==='poster'?$('posterK').value:0,
   [4,10,11,12].includes(strat)?focusX+','+focusY:0,strat===9?paintVersion:0].join('|');
 const estValid=()=>!!est&&est.key===estKey();
-// exponential with offset: P(t) = 4 + c·(e^(k·t) − 1), chosen so that P(FIRST_STEP) = 5 (first point after 0.5 s)
-// and P(D) = N. Starts roughly linear, then every doubling takes about the same time. k = 0 → plain linear.
-const FIRST_STEP=.5;
+// P(t) = 4 + c·(e^(k·t) − 1) with k = a/D and c = (N−4)/(e^a − 1), so P(0) = 4 and P(D) = N exactly (a = 0 → linear).
+// A minimum ramp of 2 points/s keeps steep late-heavy curves from starting sluggishly (first point after ≤ 0.5 s).
+const RAMP=2;
 let planC=0,planK=0;
 function fitCurve(){
   planK=0;planC=0;
-  if(curve!=='exp'||planN-4<=planD/FIRST_STEP)return; // too few points for a curve that fast → linear
-  const f=k=>Math.expm1(k*planD)/Math.expm1(k*FIRST_STEP)-(planN-4); // increasing in k
-  let lo=0,hi=1;while(f(hi)<0)hi*=2;
-  for(let i=0;i<80;i++){const m=(lo+hi)/2;if(f(m)<0)lo=m;else hi=m}
-  planK=(lo+hi)/2;planC=1/Math.expm1(planK*FIRST_STEP);
+  if(Math.abs(curveA)<1e-6)return;
+  planK=curveA/planD;planC=(planN-4)/Math.expm1(curveA);
 }
-const planP=t=>t>=planD?Infinity:planK?4+planC*Math.expm1(planK*t):4+(planN-4)*t/planD;   // points due at time t
-const planInv=n=>n<=4?0:n>=planN?planD:planK?Math.log1p((n-4)/planC)/planK:planD*(n-4)/(planN-4);
+const planCurve=t=>planK?4+planC*Math.expm1(planK*t):4+(planN-4)*t/planD;
+const planP=t=>t>=planD?Infinity:Math.max(planCurve(t),Math.min(planN,4+RAMP*t));           // points due at time t
+const planInv=n=>{if(n<=4)return 0;if(n>=planN)return planD;
+  const c=planK?Math.log1p((n-4)/planC)/planK:planD*(n-4)/(planN-4);return Math.min(c,(n-4)/RAMP)};
 function replan(){ // (re)derive the schedule and put the clock where the current point count sits on it
   if(!W)return;
   planExact=estValid();
@@ -1104,7 +1117,7 @@ function updateSummaries(){
   $('sumImage').textContent=W?`${W}×${H} px`:'kein Bild';
   const st=$('strategy'),fb=document.querySelector('[data-fill].active');
   $('sumLook').textContent=`${fb?fb.textContent:''} · ${st.options[st.selectedIndex].text.replace(/\s*\(.*$/,'')}`;
-  $('sumTempo').textContent=mode==='time'?`Dauer ${$('dur').value} · ${curve==='exp'?'exponentiell':'linear'}${$('autoRec').checked?' · ● Video':''}`
+  $('sumTempo').textContent=mode==='time'?`Dauer ${$('dur').value} · Kurve ${$('curveAValue').textContent}${$('autoRec').checked?' · ● Video':''}`
     :`${mode==='const'?'Konstant':'Mitwachsend'} · ${$('speedValue').textContent}`;
   const v=[$('showMesh').checked&&'Netz',$('showNew').checked&&'neue Dreiecke'].filter(Boolean);
   $('sumView').textContent=v.length?v.join(' · '):'nur Bild';
