@@ -166,7 +166,7 @@ const nf=new Intl.NumberFormat('de-DE');
 /* ---------- state ---------- */
 let W=0,H=0,SRC=null,OUT=null,outImg=null,loadedImage=null;
 // triangles: V = vertex ids (3 per tri, CCW), N = neighbour tri across edge i (V[i]->V[i+1]), -1 = border
-let V,N,ERR,CAND,STAMP,MARK,BMARK,triCount=0,triCap=0;
+let V,N,ERR,CAND,STAMP,MARK,BMARK,ERRN,wrongTotal=0,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
 let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
@@ -200,7 +200,7 @@ function growTris(min){
   if(min<=triCap)return;let cap=Math.max(1024,triCap*2);while(cap<min)cap*=2;
   const g=(A,T,n)=>{const B=new T(n);if(A)B.set(A);return B};
   V=g(V,Int32Array,cap*3);N=g(N,Int32Array,cap*3);ERR=g(ERR,Float64Array,cap);CAND=g(CAND,Int32Array,cap);
-  STAMP=g(STAMP,Int32Array,cap);MARK=g(MARK,Int32Array,cap);BMARK=g(BMARK,Int32Array,cap);triCap=cap;
+  STAMP=g(STAMP,Int32Array,cap);MARK=g(MARK,Int32Array,cap);BMARK=g(BMARK,Int32Array,cap);ERRN=g(ERRN,Int32Array,cap);triCap=cap;
 }
 function addPoint(x,y){
   if(ptCount>=ptCap){const cap=Math.max(1024,ptCap*2);const a=new Int32Array(cap),b=new Int32Array(cap);if(PX){a.set(PX);b.set(PY)}PX=a;PY=b;ptCap=cap}
@@ -250,8 +250,10 @@ function track(e,p,x,y){ // called for every wrong pixel p=(x,y) with error e (1
   }
 }
 let irisR=1; // falloff length for the iris split point (set per image)
+// running count of wrong pixels (approximate: gradient triangles share edge pixels) → progress estimate
+function setWrong(t,n){wrongTotal+=n-ERRN[t];ERRN[t]=n}
 function commit(t,area){
-  const sum=tSum;ERR[t]=sum;CAND[t]=tBestI;
+  const sum=tSum;ERR[t]=sum;CAND[t]=tBestI;setWrong(t,tN);
   if(sum===0)return;
   // every strategy only picks wrong pixels, so each one still ends pixel-perfect
   const ls=Math.log(sum);let key;
@@ -350,7 +352,7 @@ function scanFlat(t){
   for(let pass=0;pass<2;pass++){
     let mr=0,mg=0,mb=0,ma=0;
     if(pass===1){
-      if(n===0){ERR[t]=0;CAND[t]=-1;return}
+      if(n===0){ERR[t]=0;CAND[t]=-1;setWrong(t,0);return}
       mr=Math.round(sr/n);mg=Math.round(sg/n);mb=Math.round(sb/n);ma=Math.round(sa/n);
       // poster: snap to the palette unless the triangle is a single colour (then exact → guarantees the end state)
       if(fill==='poster'&&!uniform){let bd=Infinity;
@@ -462,7 +464,7 @@ function insert(t){
 function initMesh(keepPaint){
   triCount=0;ptCount=0;hSize=0;insertId=0;done=false;carry=0;recentTris=[];batchId++;playT=0;rngS=0x9E3779B9|0;
   growTris(Math.max(1024,Math.min(W*H*2+16,1<<16)));
-  STAMP.fill(0);MARK.fill(-1);BMARK.fill(-1);
+  STAMP.fill(0);MARK.fill(-1);BMARK.fill(-1);ERRN.fill(0);wrongTotal=0;
   OUT.fill(0);
   if(PAINT&&!keepPaint){PAINT.fill(0);paintVersion++}
   const X1=flat?W:W-1,Y1=flat?H:H-1;
@@ -493,7 +495,7 @@ function loadImage(img){
   imgId++;est=null;
   focusX=W>>1;focusY=H>>1;irisR=Math.max(1.5,.01*Math.hypot(W,H));
   prepareTables();
-  V=N=ERR=CAND=STAMP=MARK=BMARK=null;triCap=0;
+  V=N=ERR=CAND=STAMP=MARK=BMARK=ERRN=null;triCap=0;
   initMesh();
   $('empty').style.display='none';
   ['play','step','step100','reset','finish','compare','download','record'].forEach(id=>$(id).disabled=false);
@@ -609,8 +611,18 @@ async function dryRun(){
   estimating=true;const id=imgId,t0=performance.now();
   ['play','step','step100','reset','finish'].forEach(b=>$(b).disabled=true);$('play').textContent='Berechne …';
   initMesh(true);
+  // progress: remaining points ≈ wrong pixels × recent points-per-fixed-pixel (smoothed); shown monotonic, < 100 % until done
+  let pct=0,rate=0,lastPts=ptCount,lastWrong=wrongTotal,lastShow=0;
   while(!done){
-    runInserts(1e9,40);setStatus(`Berechne die nötige Punktzahl vorab … ${nf.format(ptCount)} Punkte`);
+    runInserts(1e9,40);
+    const dp=ptCount-lastPts,dw=lastWrong-wrongTotal;
+    if(dp>0&&dw>0){const r=dp/dw;rate=rate?rate*.8+r*.2:r}
+    lastPts=ptCount;lastWrong=wrongTotal;
+    if(rate){const est=ptCount/(ptCount+Math.max(0,wrongTotal)*rate);pct=Math.max(pct,Math.min(99,Math.floor(est*100)))}
+    const now=performance.now();
+    if(now-lastShow>100){lastShow=now;
+      $('play').textContent=`Berechne … ${pct} %`;
+      setStatus(`Berechne die nötige Punktzahl vorab … ${pct} % (${nf.format(ptCount)} Punkte, ${((now-t0)/1000).toFixed(0)} s)`)}
     await new Promise(res=>setTimeout(res,0));
     if(id!==imgId){estimating=false;return false} // a new image was loaded meanwhile
   }
