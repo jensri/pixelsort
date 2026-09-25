@@ -101,7 +101,7 @@ button:disabled{opacity:.45;cursor:default}
 
   <details class="sec" data-sec="look"><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
     <div class="subhead">Füllung</div>
-    <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="mosaic">Mosaik</button><button data-fill="flat">Einfarbig</button><button data-fill="poster">Poster</button></div>
+    <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="flat">Einfarbig</button><button data-fill="mosaic">Mosaik</button><button data-fill="poster">Poster</button><button data-fill="kolor">Kolorieren</button><button data-fill="glass">Bleiglas</button><button data-fill="blobs">Blobs</button><button data-fill="crystal">Kristall</button></div>
     <div class="control" id="posterCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="posterK">Farben</label><span class="value" id="posterKValue"></span></div><input id="posterK" type="range" min="3" max="32" step="1" value="8"></div>
     <div class="hint" id="fillHint"></div>
     <div class="subhead">Reihenfolge</div>
@@ -117,6 +117,17 @@ button:disabled{opacity:.45;cursor:default}
       <option value="8">Farbton-Sweep (Rot → Violett)</option>
       <option value="9">Pinsel (ins Bild malen)</option>
       <option value="10">Iris (Kreis vom Punkt aus)</option>
+      <option value="11">Spirale (vom Punkt aus)</option>
+      <option value="12">Iris schließt (von außen zum Punkt)</option>
+      <option value="13">Regentropfen (mehrere Kreise)</option>
+      <option value="14">Regen (oben → unten)</option>
+      <option value="15">Diagonal (↖ → ↘)</option>
+      <option value="16">Tor (beide Seiten → Mitte)</option>
+      <option value="17">Kacheln (zufällige Reihenfolge)</option>
+      <option value="18">Zeilensprung (Interlaced)</option>
+      <option value="19">Konturen zuerst (Skizze)</option>
+      <option value="20">Ruhige Flächen zuerst</option>
+      <option value="21">Bunt zuerst (Sättigung)</option>
     </select></div>
     <div class="control" id="detailCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="detailW">Detail-Gewicht</label><span class="value" id="detailWValue"></span></div><input id="detailW" type="range" min="0" max="100" step="5" value="50"></div>
     <div class="hint" id="strategyHint"></div>
@@ -195,6 +206,7 @@ let strat=0,focusX=0,focusY=0,detailW=.5;
 // belongs to exactly one triangle (top-left rule), so a fully refined mesh is pixel-perfect too.
 let flat=false,ISV=null;
 let fill='grad';                 // grad | mosaic (centre mesh)  ·  flat | poster (corner mesh)
+let SAT=null,EDGE=null,DROPS=[],TILE_S=1,TILE_W=1,TILE_RANK=null,ROW_RANK=null;
 let LUM=null,HUE=null,PAINT=null,PAL=null,PAL_K=0; // per-pixel brightness / hue / brush paint, poster palette
 let brushPos=null,brushDown=false,brushTimer=0;   // Pinsel
 let rec=null,recCanvas=null,recCtx=null,recChunks=[],recHold=0,recMime=''; // video export
@@ -267,7 +279,28 @@ function track(e,p,x,y){ // called for every wrong pixel p=(x,y) with error e (1
     case 9:{const w=PAINT[p]*e;tWSum+=w;if(w>tWBest){tWBest=w;tAltI=p}break}             // error × paint
     case 10:{const dx=x-focusX,dy=y-focusY,d=Math.sqrt(dx*dx+dy*dy);if(d<tAltD)tAltD=d;   // nearest the iris centre …
       const w=Math.log(e)-d/irisR;if(w>tWBest){tWBest=w;tAltI=p}break}                  // … split where error is high but close
+    case 19:{const w=EDGE[p]*e;tWSum+=w;if(w>tWBest){tWBest=w;tAltI=p}break}           // error × edge strength
+    case 20:{const c=(255-EDGE[p])/255,w=c*c*c*c*e;tWSum+=w;if(w>tWBest){tWBest=w;tAltI=p}break} // error × calmness⁴
+    case 21:{const sc=-(SAT[p]*2048+e);if(sc<tAltD){tAltD=sc;tAltI=p}break}             // most saturated
+    default:if(strat>=11){                                                               // "front" orders: smallest m first,
+      const m=frontM(x,y);if(m<tAltD)tAltD=m;                                            // split where error is high near the front
+      const w=Math.log(e)-m/irisR;if(w>tWBest){tWBest=w;tAltI=p}}
   }
+}
+// front coordinate (pixels) for the sweeping orders: the image becomes exact in increasing m
+function frontM(x,y){
+  switch(strat){
+    case 11:{const dx=x-focusX,dy=y-focusY,r=Math.sqrt(dx*dx+dy*dy),P=.07*Math.hypot(W,H);    // Archimedean spiral r = P·turns
+      const th=(Math.atan2(dy,dx)+Math.PI)/(2*Math.PI),k=Math.round(r/P-th);return (k+th)*P}
+    case 12:{const dx=x-focusX,dy=y-focusY;return -Math.sqrt(dx*dx+dy*dy)}                  // farthest first
+    case 13:{let d=Infinity;for(const c of DROPS){const dx=x-c[0],dy=y-c[1],q=dx*dx+dy*dy;if(q<d)d=q}return Math.sqrt(d)}
+    case 14:return y;
+    case 15:return (x+y)*.7071;
+    case 16:return Math.min(x,W-1-x);
+    case 17:return TILE_RANK[Math.floor(y/TILE_S)*TILE_W+Math.floor(x/TILE_S)]*1e6;      // whole tile before the next
+    case 18:return ROW_RANK[y]*1e6;                                                     // whole row before the next
+  }
+  return 0;
 }
 let irisR=1; // falloff length for the iris split point (set per image)
 // running count of wrong pixels (approximate: gradient triangles share edge pixels) → progress estimate
@@ -288,6 +321,9 @@ function commit(t,area){
     case 8:key=2000-Math.ceil(tAltD/2048)+ls*.01;CAND[t]=tAltI;break;            // hue (0…359, grey = 1000 → last)
     case 9:if(tWSum>0){key=1000+Math.log(tWSum);CAND[t]=tAltI}else key=ls;break; // painted error first, the rest by total error
     case 10:key=-tAltD+ls*.01;CAND[t]=tAltI;break;                               // ring grows outward from the centre
+    case 19:case 20:if(tWSum>0){key=1000+Math.log(tWSum);CAND[t]=tAltI}else key=ls;break; // weighted error first, then the rest
+    case 21:key=Math.floor(-tAltD/2048)+ls*.01;CAND[t]=tAltI;break;              // saturation of its most colourful wrong pixel
+    case 11:case 12:case 13:case 14:case 15:case 16:case 17:case 18:key=-tAltD+ls*.01;CAND[t]=tAltI;break; // sweeping front
     default:key=sum;                                                             // total error: big, wrong triangles first
   }
   hPush(key,t);
@@ -297,6 +333,8 @@ function commit(t,area){
 function scanTri(t){
   if(flat)return scanFlat(t);
   if(fill==='mosaic')return scanMosaic(t);
+  if(fill==='kolor')return scanKolor(t);
+  if(fill==='blobs')return scanBlobs(t);
   const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
   const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
   const area=orient(ax,ay,bx,by,cx,cy);
@@ -357,6 +395,78 @@ function scanMosaic(t){
   commit(t,area);
 }
 
+/* ---------- Kolorieren: gradient in grey until the triangle is accurate (max pixel error ≤ KOLOR_T), then in colour.
+   Vertex pixels always show their true colour, so a wrong pixel that becomes a vertex is exact. ---------- */
+const KOLOR_T=24;
+function scanKolor(t){
+  const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
+  const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
+  const area=orient(ax,ay,bx,by,cx,cy);
+  const ia=(ay*W+ax)*4,ib=(by*W+bx)*4,ic=(cy*W+cx)*4;
+  const r0=SRC[ia],g0=SRC[ia+1],b0=SRC[ia+2],a0=SRC[ia+3],r1=SRC[ib],g1=SRC[ib+1],b1=SRC[ib+2],a1=SRC[ib+3],r2=SRC[ic],g2=SRC[ic+1],b2=SRC[ic+2],a2=SRC[ic+3];
+  const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
+  const e0x=by-cy,e1x=cy-ay,e2x=ay-by;
+  let colour=true;
+  for(let pass=0;pass<2;pass++){
+    if(pass===1)trackReset((ax+bx+cx)/3,(ay+by+cy)/3);
+    for(let y=minY;y<=maxY;y++){
+      let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
+      let i=(y*W+minX)*4,inside=false;
+      for(let x=minX;x<=maxX;x++,i+=4,w0+=e0x,w1+=e1x,w2+=e2x){
+        if(w0<0||w1<0||w2<0){if(inside)break;continue}
+        inside=true;
+        let r=Math.round((w0*r0+w1*r1+w2*r2)/area),g=Math.round((w0*g0+w1*g1+w2*g2)/area),bb=Math.round((w0*b0+w1*b1+w2*b2)/area);
+        const al=Math.round((w0*a0+w1*a1+w2*a2)/area);
+        if(pass===0){if(Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3])>KOLOR_T){colour=false}continue}
+        if(!colour){
+          if((w0===0)+(w1===0)+(w2===0)>=2){r=SRC[i];g=SRC[i+1];bb=SRC[i+2]}         // vertex pixel: true colour
+          else{const l=Math.round(.2126*r+.7152*g+.0722*bb);r=g=bb=l}
+        }
+        OUT[i]=r;OUT[i+1]=g;OUT[i+2]=bb;OUT[i+3]=al;
+        const e=Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3]);
+        if(e)track(e,i>>2,x,y);
+      }
+      if(pass===0&&!colour)break;
+    }
+  }
+  commit(t,area);
+}
+
+/* ---------- Blobs: Shepard interpolation (weights 1/d²) over the triangle's vertices AND the opposite vertices of
+   its three neighbours → soft round shapes that flow across triangle borders. Exact at every vertex. ---------- */
+function scanBlobs(t){
+  const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
+  const ax=PX[a],ay=PY[a],bx=PX[b],by=PY[b],cx=PX[c],cy=PY[c];
+  const area=orient(ax,ay,bx,by,cx,cy);
+  const P=[a,b,c];
+  for(let e=0;e<3;e++){const n=N[k+e];if(n<0)continue;const kn=3*n;for(let q=0;q<3;q++){const v=V[kn+q];if(v!==a&&v!==b&&v!==c){P.push(v);break}}}
+  const m=P.length,QX=new Float64Array(m),QY=new Float64Array(m),QI=new Int32Array(m);
+  for(let q=0;q<m;q++){QX[q]=PX[P[q]];QY[q]=PY[P[q]];QI[q]=(PY[P[q]]*W+PX[P[q]])*4}
+  const tl0=N[k+1]<0||(cy-by)>0||((cy-by)===0&&(cx-bx)>0),tl1=N[k+2]<0||(ay-cy)>0||((ay-cy)===0&&(ax-cx)>0),tl2=N[k]<0||(by-ay)>0||((by-ay)===0&&(bx-ax)>0);
+  const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
+  const e0x=by-cy,e1x=cy-ay,e2x=ay-by;
+  trackReset((ax+bx+cx)/3,(ay+by+cy)/3);
+  for(let y=minY;y<=maxY;y++){
+    let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
+    let i=(y*W+minX)*4,inside=false;
+    for(let x=minX;x<=maxX;x++,i+=4,w0+=e0x,w1+=e1x,w2+=e2x){
+      if(w0<0||w1<0||w2<0){if(inside)break;continue}
+      inside=true;
+      if((w0===0)+(w1===0)+(w2===0)===1&&!((w0===0&&tl0)||(w1===0&&tl1)||(w2===0&&tl2)))continue; // unique ownership (as Mosaik)
+      let sw=0,sr=0,sg=0,sb=0,sa=0,hit=-1;
+      for(let q=0;q<m;q++){const dx=x-QX[q],dy=y-QY[q],d=dx*dx+dy*dy;if(d===0){hit=QI[q];break}
+        const wq=1/(d*d),j=QI[q];sw+=wq;sr+=wq*SRC[j];sg+=wq*SRC[j+1];sb+=wq*SRC[j+2];sa+=wq*SRC[j+3]}
+      let r,g,bb,al;
+      if(hit>=0){r=SRC[hit];g=SRC[hit+1];bb=SRC[hit+2];al=SRC[hit+3]}
+      else{r=Math.round(sr/sw);g=Math.round(sg/sw);bb=Math.round(sb/sw);al=Math.round(sa/sw)}
+      OUT[i]=r;OUT[i+1]=g;OUT[i+2]=bb;OUT[i+3]=al;
+      const e=Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3]);
+      if(e)track(e,i>>2,x,y);
+    }
+  }
+  commit(t,area);
+}
+
 /* ---------- solid / poster fill: one colour per triangle for the pixel centres it owns ---------- */
 function scanFlat(t){
   const k=3*t,a=V[k],b=V[k+1],c=V[k+2];
@@ -368,6 +478,9 @@ function scanFlat(t){
   const tl0=(cy-by)>0||((cy-by)===0&&(cx-bx)>0),tl1=(ay-cy)>0||((ay-cy)===0&&(ax-cx)>0),tl2=(by-ay)>0||((by-ay)===0&&(bx-ax)>0);
   const x0=Math.min(PX[a],PX[b],PX[c]),x1=Math.max(PX[a],PX[b],PX[c])-1,y0=Math.min(PY[a],PY[b],PY[c]),y1=Math.max(PY[a],PY[b],PY[c])-1;
   const s0=2*(by-cy),s1=2*(cy-ay),s2=2*(ay-by);
+  // Bleiglas: lead lines near the edges (distance in pixels = w / (2·|edge|) in doubled coordinates)
+  const il0=1/(2*Math.hypot(cx-bx,cy-by)),il1=1/(2*Math.hypot(ax-cx,ay-cy)),il2=1/(2*Math.hypot(bx-ax,by-ay));
+  const lead=Math.min(6,Math.max(.75,.035*Math.sqrt(area)));
   let n=0,sr=0,sg=0,sb=0,sa=0,first=-1,uniform=true;
   for(let pass=0;pass<2;pass++){
     let mr=0,mg=0,mb=0,ma=0;
@@ -378,6 +491,15 @@ function scanFlat(t){
       if(fill==='poster'&&!uniform){let bd=Infinity;
         for(let q=0;q<PAL_K*3;q+=3){const dr=PAL[q]-mr,dg=PAL[q+1]-mg,db=PAL[q+2]-mb,d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;sr=PAL[q];sg=PAL[q+1];sb=PAL[q+2]}}
         mr=sr;mg=sg;mb=sb}
+      // Kristall: shade the flat colour by a fake light on the luminance "height field" (flat colour once exact)
+      if(fill==='crystal'&&!uniform){
+        const L=q=>LUM[Math.min(H-1,PY[q])*W+Math.min(W-1,PX[q])],l0=L(a),l1=L(b),l2=L(c);
+        const x0c=PX[a],y0c=PY[a],ar=orient(PX[a],PY[a],PX[b],PY[b],PX[c],PY[c]);
+        const gx=((l1-l0)*(PY[c]-y0c)-(l2-l0)*(PY[b]-y0c))/ar,gy=((l2-l0)*(PX[b]-x0c)-(l1-l0)*(PX[c]-x0c))/ar;
+        const S=1.6,nx=-gx*S,ny=-gy*S,nl=Math.hypot(nx,ny,1),dot=(nx*-.45+ny*-.55+.7)/nl/Math.hypot(.45,.55,.7);
+        const sh=1+1.1*(dot-.7/Math.hypot(.45,.55,.7));
+        mr=Math.max(0,Math.min(255,Math.round(mr*sh)));mg=Math.max(0,Math.min(255,Math.round(mg*sh)));mb=Math.max(0,Math.min(255,Math.round(mb*sh)));
+      }
       trackReset((PX[a]+PX[b]+PX[c])/3-.5,(PY[a]+PY[b]+PY[c])/3-.5); // centroid in pixel-index coordinates
     }
     for(let y=y0;y<=y1;y++){
@@ -391,8 +513,10 @@ function scanFlat(t){
           if(first<0)first=i;else if(uniform&&(SRC[i]!==SRC[first]||SRC[i+1]!==SRC[first+1]||SRC[i+2]!==SRC[first+2]||SRC[i+3]!==SRC[first+3]))uniform=false;
           continue;
         }
-        OUT[i]=mr;OUT[i+1]=mg;OUT[i+2]=mb;OUT[i+3]=ma;
-        const e=Math.abs(mr-SRC[i])+Math.abs(mg-SRC[i+1])+Math.abs(mb-SRC[i+2])+Math.abs(ma-SRC[i+3]);
+        let or=mr,og=mg,ob=mb;
+        if(fill==='glass'&&!uniform&&Math.min(w0*il0,w1*il1,w2*il2)<lead){or=34;og=31;ob=30}  // lead (not on exact triangles)
+        OUT[i]=or;OUT[i+1]=og;OUT[i+2]=ob;OUT[i+3]=ma;
+        const e=Math.abs(or-SRC[i])+Math.abs(og-SRC[i+1])+Math.abs(ob-SRC[i+2])+Math.abs(ma-SRC[i+3]);
         if(e)track(e,i>>2,x,y);
       }
     }
@@ -534,6 +658,20 @@ function prepareTables(){
     let h=mx===r?(g-b)/d:mx===g?2+(b-r)/d:4+(r-g)/d;h=(h*60+360+15)%360; // +15°: deep reds start the sweep
     HUE[p]=Math.floor(h);
   }
+  // saturation + Sobel edge strength (Bunt / Konturen / Flächen orders)
+  SAT=new Uint8Array(n);EDGE=new Uint8Array(n);
+  for(let p=0,i=0;p<n;p++,i+=4){const mx=Math.max(SRC[i],SRC[i+1],SRC[i+2]),mn=Math.min(SRC[i],SRC[i+1],SRC[i+2]);SAT[p]=mx?Math.round(255*(mx-mn)/mx):0}
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){const p=y*W+x,L=LUM;
+    const gx=L[p-W+1]+2*L[p+1]+L[p+W+1]-L[p-W-1]-2*L[p-1]-L[p+W-1],gy=L[p+W-1]+2*L[p+W]+L[p+W+1]-L[p-W-1]-2*L[p-W]-L[p-W+1];
+    EDGE[p]=Math.min(255,(Math.abs(gx)+Math.abs(gy))>>2)}
+  // fixed-seed layouts: raindrop centres, tile order, interlaced row order (bit-reversed row index)
+  let seed=0x2545F491;const rr=()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+  DROPS=[];for(let q=0;q<7;q++)DROPS.push([Math.round(W*(.08+.84*rr())),Math.round(H*(.08+.84*rr()))]);
+  TILE_S=Math.max(1,Math.ceil(Math.max(W,H)/8));TILE_W=Math.ceil(W/TILE_S);const nt=TILE_W*Math.ceil(H/TILE_S);
+  const perm=[...Array(nt).keys()];for(let q=nt-1;q>0;q--){const z=Math.floor(rr()*(q+1));[perm[q],perm[z]]=[perm[z],perm[q]]}
+  TILE_RANK=new Int32Array(nt);perm.forEach((tile,rank)=>TILE_RANK[tile]=rank);
+  let bits=1;while((1<<bits)<H)bits++;ROW_RANK=new Int32Array(H);
+  for(let y=0;y<H;y++){let v=0;for(let b=0;b<bits;b++)if(y&(1<<b))v|=1<<(bits-1-b);ROW_RANK[y]=v}
   buildPalette();
 }
 // k-means (farthest-point seeding) on a subsample → poster palette
@@ -603,7 +741,7 @@ $('dur').addEventListener('change',()=>{const pd=parseDur($('dur').value);if(pd)
 /* ---------- time-based tempo ---------- */
 // everything that changes which points get inserted
 const estKey=()=>[imgId,fill,strat,strat===1?detailW:0,fill==='poster'?$('posterK').value:0,
-  strat===4||strat===10?focusX+','+focusY:0,strat===9?paintVersion:0].join('|');
+  [4,10,11,12].includes(strat)?focusX+','+focusY:0,strat===9?paintVersion:0].join('|');
 const estValid=()=>!!est&&est.key===estKey();
 // exponential with offset: P(t) = 4 + c·(e^(k·t) − 1), chosen so that P(FIRST_STEP) = 5 (first point after 0.5 s)
 // and P(D) = N. Starts roughly linear, then every doubling takes about the same time. k = 0 → plain linear.
@@ -756,7 +894,7 @@ function drawOverlay(){
     octx.fillStyle='rgba(255,59,47,.28)';octx.fill();
     octx.lineWidth=(window.devicePixelRatio||1)*1.1;octx.lineJoin='round';octx.strokeStyle='#ff3b2f';octx.stroke();
   }
-  if((strat===4||strat===10)&&!done){
+  if(([4,10,11,12].includes(strat))&&!done){
     const d=window.devicePixelRatio||1,x=(focusX+.5)*sx,y=(focusY+.5)*sy;
     octx.lineWidth=2*d;
     for(const [col,w] of [['rgba(0,0,0,.6)',4*d],['#fff',2*d]]){
@@ -825,7 +963,18 @@ const STRAT_HINTS=[
   'Umgekehrt: Schatten und dunkle Konturen zuerst, Lichter und Himmel ganz zum Schluss.',
   'Ein Farbton nach dem anderen: erst Rot, dann Orange, Gelb, Grün, Blau, Violett – Grau und Schwarz kommen zuletzt.',
   'Male mit Maus oder Finger ins Bild: bemalte Stellen werden zuerst verfeinert (auch während es läuft). Ohne Bemalung wie „Größter Fehler zuerst“.',
-  'Ein scharfer Kreis wächst vom gewählten Punkt aus nach außen. Tippe ins Bild, um den Mittelpunkt zu setzen.'];
+  'Ein scharfer Kreis wächst vom gewählten Punkt aus nach außen. Tippe ins Bild, um den Mittelpunkt zu setzen.',
+  'Eine Spirale windet sich vom gewählten Punkt nach außen. Tippe ins Bild, um die Mitte zu setzen.',
+  'Umgekehrte Iris: der Rand wird zuerst scharf, der Kreis schließt sich zum gewählten Punkt hin.',
+  'Mehrere scharfe Kreise wachsen gleichzeitig und fließen ineinander – wie Tropfen auf einer Pfütze.',
+  'Zeile für Zeile von oben nach unten – wie Regen, der über das Bild läuft.',
+  'Eine diagonale Front von links oben nach rechts unten.',
+  'Von beiden Rändern gleichzeitig zur Mitte – wie ein Tor, das sich schließt.',
+  'Das Bild ist in Kacheln geteilt; eine nach der anderen wird in zufälliger Reihenfolge pixelgenau.',
+  'Wie ein altes Interlaced-GIF: erst jede 64. Zeile, dann jede 32. … bis alle Zeilen stimmen.',
+  'Starke Kanten und Umrisse zuerst – das Bild entsteht wie eine Bleistiftskizze, Flächen füllen sich zuletzt.',
+  'Umgekehrt: ruhige, glatte Flächen (Himmel, Hintergrund) zuerst, Kanten und Details zuletzt.',
+  'Die farbigsten Stellen zuerst, graue und blasse Bereiche zum Schluss.'];
 function reprioritize(){ // rebuild the queue: every triangle gets a key + candidate for the current strategy
   if(!V||done)return;
   hSize=0;
@@ -834,7 +983,7 @@ function reprioritize(){ // rebuild the queue: every triangle gets a key + candi
 }
 function syncStrategy(){
   strat=+$('strategy').value;$('strategyHint').textContent=STRAT_HINTS[strat];
-  result.style.cursor=strat===4||strat===10?'crosshair':strat===9?'none':'';
+  result.style.cursor=[4,10,11,12].includes(strat)?'crosshair':strat===9?'none':'';
   result.style.touchAction=strat===9?'none':'';
   if(strat!==9)brushPos=null;
   $('detailCtl').style.display=strat===1?'':'none';
@@ -845,15 +994,20 @@ $('strategy').onchange=syncStrategy;syncStrategy();
 /* ---------- fill mode ---------- */
 const FILL_HINTS={
   grad:'Farben verlaufen linear zwischen den drei Eckpunkten – weich, kommt mit den wenigsten Punkten aus.',
-  mosaic:'Jedes Pixel nimmt die Farbe des nächstgelegenen Eckpunkts – Zellen wie ein Steinmosaik (Voronoi). Wechsel zu „Verlauf“ ohne Neustart.',
+  mosaic:'Jedes Pixel nimmt die Farbe des nächstgelegenen Eckpunkts – Zellen wie ein Steinmosaik (Voronoi).',
   flat:'Jedes Dreieck in seiner Durchschnittsfarbe – kantiger Low-Poly-Look. Eckpunkte liegen auf Pixelecken; am Ende ebenfalls pixelgenau.',
-  poster:'Wie „Einfarbig“, aber nur mit einer kleinen Farbpalette aus dem Bild – Siebdruck-Look. Echte Farben erst, wenn ein Dreieck einfarbig ist.'};
-const FILL_NAMES={grad:'Verlauf',mosaic:'Mosaik',flat:'Einfarbig',poster:'Poster'};
+  poster:'Wie „Einfarbig“, aber nur mit einer kleinen Farbpalette aus dem Bild – Siebdruck-Look. Echte Farben erst, wenn ein Dreieck einfarbig ist.',
+  kolor:'Schwarzweiß-Verlauf – ein Dreieck wird erst farbig, wenn es fast stimmt. Das Bild koloriert sich Stück für Stück.',
+  blobs:'Weiche, runde Formen statt Dreiecken: jedes Pixel mischt die Farben der nahen Eckpunkte (auch aus Nachbardreiecken), gewichtet nach Nähe.',
+  glass:'Einfarbige Flächen mit dunklen Bleiruten wie ein Kirchenfenster. Die Ruten verschwinden, sobald eine Fläche exakt ist.',
+  crystal:'Einfarbige Facetten mit Lichteinfall aus der Bildhelligkeit – wirkt wie ein geschliffener Kristall.'};
+const FILL_NAMES={grad:'Verlauf',mosaic:'Mosaik',flat:'Einfarbig',poster:'Poster',kolor:'Kolorieren',blobs:'Blobs',glass:'Bleiglas',crystal:'Kristall'};
+const CORNER_FILLS=['flat','poster','glass','crystal']; // right column: vertices on pixel corners
 function setFill(f){
   fill=f;
   document.querySelectorAll('[data-fill]').forEach(b=>b.classList.toggle('active',b.dataset.fill===f));
   $('fillHint').textContent=FILL_HINTS[f];$('posterCtl').style.display=f==='poster'?'':'none';
-  const wantFlat=f==='flat'||f==='poster';
+  const wantFlat=CORNER_FILLS.includes(f);
   if(!V){flat=wantFlat;return}
   const was=running;setRunning(false);
   if(wantFlat!==flat){ // different vertex lattice (pixel centres vs. corners) → start over
@@ -929,7 +1083,7 @@ const syncDetail=()=>{detailW=+$('detailW').value/100;$('detailWValue').textCont
 $('detailW').addEventListener('input',syncDetail);syncDetail();
 result.addEventListener('pointerdown',e=>{
   if(strat===9&&W){e.preventDefault();brushDown=true;brushPos=pointerPixel(e);stamp(brushPos[0],brushPos[1]);scheduleRepaint();drawOverlay();return}
-  if((strat!==4&&strat!==10)||!W)return;
+  if(![4,10,11,12].includes(strat)||!W)return;
   const b=result.getBoundingClientRect();
   focusX=Math.max(0,Math.min(W-1,Math.floor((e.clientX-b.left)/b.width*W)));
   focusY=Math.max(0,Math.min(H-1,Math.floor((e.clientY-b.top)/b.height*H)));
@@ -954,8 +1108,8 @@ updateSummaries();
 /* ---------- Zufall: roll fill, order and their parameters, then start fresh ---------- */
 $('shuffle').onclick=()=>{
   const pick=a=>a[Math.floor(Math.random()*a.length)];
-  const fillNew=pick(['grad','mosaic','flat','poster']);
-  const orderNew=pick([0,1,2,3,4,5,6,7,8,10].filter(o=>o!==strat||Math.random()<.2)); // Pinsel needs painting → never rolled
+  const fillNew=pick(Object.keys(FILL_NAMES));
+  const orderNew=pick([0,1,2,3,4,5,6,7,8,10,11,12,13,14,15,16,17,18,19,20,21].filter(o=>o!==strat||Math.random()<.2)); // Pinsel needs painting → never rolled
   $('strategy').value=String(orderNew);
   $('detailW').value=String(5*Math.round((20+Math.random()*60)/5));
   $('posterK').value=String(Math.round(4+Math.random()*12));
@@ -969,7 +1123,7 @@ $('shuffle').onclick=()=>{
   updateSummaries();
   const name=$('strategy').options[$('strategy').selectedIndex].text.replace(/\s*\(.*$/,'');
   setStatus(`Zufall: ${FILL_NAMES[fill]} · ${name}`+(strat===1?` · Detail ${$('detailW').value} %`:'')+(fill==='poster'?` · ${$('posterK').value} Farben`:'')+
-    (strat===4||strat===10?' · Punkt gewürfelt':'')+(W?(was?'':' – „Start“ drücken.'):' – jetzt ein Bild laden.'));
+    ([4,10,11,12].includes(strat)?' · Punkt gewürfelt':'')+(W?(was?'':' – „Start“ drücken.'):' – jetzt ein Bild laden.'));
   if(was)setRunning(true);
 };
 
