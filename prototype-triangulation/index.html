@@ -17,6 +17,8 @@ header p{margin:6px 0 20px;color:var(--muted);max-width:860px;line-height:1.45}
 .panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px}
 .panel{padding:18px;position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto}
 .sec.solo{padding:14px 0 2px}
+.presetRow{display:flex;gap:8px}.presetRow select{flex:1;min-width:0}
+#shuffle{flex:none;width:46px;padding:0;font-size:20px;line-height:1}
 .panel>.sec:first-child{border-top:0;margin-top:0}
 .panel>.sec:first-child>summary{padding-top:2px}
 .controls{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}
@@ -97,7 +99,10 @@ button:disabled{opacity:.45;cursor:default}
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
   </div></details>
 
-  <div class="sec solo"><button id="shuffle" style="width:100%">🎲 Zufall – Füllung, Reihenfolge &amp; Parameter würfeln</button></div>
+  <div class="sec solo"><div class="presetRow">
+    <select id="preset" aria-label="Voreinstellung"><option value="">Voreinstellung wählen …</option></select>
+    <button id="shuffle" title="Zufall: Füllung, Reihenfolge und Parameter würfeln" aria-label="Zufall">🎲</button>
+  </div></div>
 
   <details class="sec" data-sec="look"><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
     <div class="subhead">Füllung</div>
@@ -202,6 +207,7 @@ let V,N,ERR,CAND,STAMP,MARK,BMARK,ERRN,wrongTotal=0,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
 let running=false,done=false,mode='time',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
+let focusFrac=[.5,.5];
 let strat=0,focusX=0,focusY=0,detailW=.5;
 // flat: solid triangles. Vertices then sit on pixel CORNERS (0..W × 0..H) and every pixel centre
 // belongs to exactly one triangle (top-left rule), so a fully refined mesh is pixel-perfect too.
@@ -638,7 +644,7 @@ function loadImage(img){
   source.width=W;source.height=H;source.getContext('2d').drawImage(origCanvas,0,0);
   const es=Math.max(1,Math.ceil(Math.max(W,H)/260));errmap.width=Math.ceil(W/es);errmap.height=Math.ceil(H/es);
   imgId++;est=null;
-  focusX=W>>1;focusY=H>>1;irisR=Math.max(1.5,.01*Math.hypot(W,H));
+  focusX=Math.round((W-1)*focusFrac[0]);focusY=Math.round((H-1)*focusFrac[1]);irisR=Math.max(1.5,.01*Math.hypot(W,H));
   prepareTables();
   V=N=ERR=CAND=STAMP=MARK=BMARK=ERRN=null;triCap=0;
   initMesh();
@@ -1088,6 +1094,7 @@ result.addEventListener('pointerdown',e=>{
   const b=result.getBoundingClientRect();
   focusX=Math.max(0,Math.min(W-1,Math.floor((e.clientX-b.left)/b.width*W)));
   focusY=Math.max(0,Math.min(H-1,Math.floor((e.clientY-b.top)/b.height*H)));
+  focusFrac=[focusX/Math.max(1,W-1),focusY/Math.max(1,H-1)];
   reprioritize();
 });
 $('maxSize').onchange=()=>{if(loadedImage){setRunning(false);loadImage(loadedImage)}};
@@ -1107,26 +1114,60 @@ let sumRaf=0;
 updateSummaries();
 
 /* ---------- Zufall: roll fill, order and their parameters, then start fresh ---------- */
-$('shuffle').onclick=()=>{
-  const pick=a=>a[Math.floor(Math.random()*a.length)];
-  const fillNew=pick(Object.keys(FILL_NAMES));
-  const orderNew=pick([0,1,2,3,4,5,6,7,8,10,11,12,13,14,15,16,17,18,19,20,21].filter(o=>o!==strat||Math.random()<.2)); // Pinsel needs painting → never rolled
-  $('strategy').value=String(orderNew);
-  $('detailW').value=String(5*Math.round((20+Math.random()*60)/5));
-  $('posterK').value=String(Math.round(4+Math.random()*12));
-  if(W){focusX=Math.round(W*(.15+.7*Math.random()));focusY=Math.round(H*(.15+.7*Math.random()))}
+// apply a complete look (fill, order, parameters) and start fresh
+function applyLook(L,label){
+  $('strategy').value=String(L.order);
+  $('detailW').value=String(L.detail??50);$('posterK').value=String(L.colors??8);
+  focusFrac=L.focus||[.5,.5];
+  if(W){focusX=Math.round((W-1)*focusFrac[0]);focusY=Math.round((H-1)*focusFrac[1])}
   detailW=+$('detailW').value/100;$('detailWValue').textContent=$('detailW').value+' %';$('posterKValue').textContent=$('posterK').value;
   if(SRC)buildPalette();
   const was=running&&mode!=='time';setRunning(false);
-  strat=orderNew;syncStrategy();
-  if(fillNew!==fill)setFill(fillNew);
+  strat=L.order;syncStrategy();
+  if(L.fill!==fill)setFill(L.fill);
   if(V){initMesh();present(true)}
   updateSummaries();
   const name=$('strategy').options[$('strategy').selectedIndex].text.replace(/\s*\(.*$/,'');
-  setStatus(`Zufall: ${FILL_NAMES[fill]} · ${name}`+(strat===1?` · Detail ${$('detailW').value} %`:'')+(fill==='poster'?` · ${$('posterK').value} Farben`:'')+
-    ([4,10,11,12].includes(strat)?' · Punkt gewürfelt':'')+(W?(was?'':' – „Start“ drücken.'):' – jetzt ein Bild laden.'));
+  setStatus(`${label}: ${FILL_NAMES[fill]} · ${name}`+(strat===1?` · Detail ${$('detailW').value} %`:'')+(fill==='poster'?` · ${$('posterK').value} Farben`:'')+
+    (W?(was?'':' – „Start“ drücken.'):' – jetzt ein Bild laden.'));
   if(was)setRunning(true);
+}
+// curated looks (order ids: see the "Reihenfolge" list; focus = fraction of width/height)
+const PRESETS=[
+  {name:'Klassisch',            fill:'grad',   order:0},
+  {name:'Dunkelkammer',         fill:'grad',   order:6},
+  {name:'Nachtaufnahme',        fill:'grad',   order:7},
+  {name:'Retro-GIF',            fill:'grad',   order:18},
+  {name:'Regenschauer',         fill:'grad',   order:14},
+  {name:'Scheinwerfer',         fill:'grad',   order:10, focus:[.5,.45]},
+  {name:'Low-Poly',             fill:'flat',   order:1,  detail:40},
+  {name:'Puzzle',               fill:'flat',   order:17},
+  {name:'Kirchenfenster',       fill:'glass',  order:0},
+  {name:'Bleistift & Blei',     fill:'glass',  order:19},
+  {name:'Edelstein',            fill:'crystal',order:1,  detail:40},
+  {name:'Kristall-Iris',        fill:'crystal',order:10, focus:[.5,.5]},
+  {name:'Aquarell',             fill:'blobs',  order:3},
+  {name:'Farbtropfen',          fill:'blobs',  order:13},
+  {name:'Wirbel',               fill:'blobs',  order:11, focus:[.5,.5]},
+  {name:'Steinmosaik',          fill:'mosaic', order:2},
+  {name:'Mosaik-Regenbogen',    fill:'mosaic', order:8},
+  {name:'Kohlezeichnung',       fill:'kolor',  order:19},
+  {name:'Handkoloriert',        fill:'kolor',  order:21},
+  {name:'Siebdruck',            fill:'poster', order:1,  detail:50, colors:6},
+];
+PRESETS.forEach((P,q)=>{const o=document.createElement('option');o.value=q;o.textContent=`${P.name} — ${FILL_NAMES[P.fill]}`;$('preset').appendChild(o)});
+$('preset').onchange=()=>{const P=PRESETS[+$('preset').value];if(P)applyLook(P,`„${P.name}“`)};
+$('shuffle').onclick=()=>{
+  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  applyLook({fill:pick(Object.keys(FILL_NAMES)),
+    order:pick([0,1,2,3,4,5,6,7,8,10,11,12,13,14,15,16,17,18,19,20,21].filter(o=>o!==strat||Math.random()<.2)), // Pinsel needs painting → never rolled
+    detail:5*Math.round((20+Math.random()*60)/5),colors:Math.round(4+Math.random()*12),
+    focus:[.15+.7*Math.random(),.15+.7*Math.random()]},'Zufall');
+  $('preset').value='';
 };
+// hand-editing the look leaves the preset
+['strategy','detailW','posterK'].forEach(id=>$(id).addEventListener('input',()=>{$('preset').value=''}));
+document.querySelectorAll('[data-fill]').forEach(b=>b.addEventListener('click',()=>{$('preset').value=''}));
 
 function loadFile(file){
   if(!file||!file.type.startsWith('image/'))return;
