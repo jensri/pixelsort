@@ -46,6 +46,8 @@ select{width:100%;font:inherit;padding:8px;border-radius:10px;border:1px solid v
 .checks{display:grid;gap:8px;font-size:14px}.checks label{display:flex;align-items:center;gap:8px}
 .buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px}
 button{border:1px solid var(--line);background:transparent;color:var(--text);border-radius:11px;padding:11px;font:inherit;font-weight:650;cursor:pointer}
+.linkBtn{border:0;background:none;padding:6px 4px 0;font-size:12px;font-weight:400;color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.linkBtn:hover{color:var(--text)}
 button.rec{color:#e5332a;border-color:#e5332a}
 button.primary{grid-column:1/-1;background:var(--accent);color:var(--btn);border-color:var(--accent)}
 button:disabled{opacity:.45;cursor:default}
@@ -83,14 +85,14 @@ button:disabled{opacity:.45;cursor:default}
 <aside class="panel">
   <details class="sec" data-sec="image" open><summary><span>Bild</span><em id="sumImage"></em></summary><div class="secBody">
   <div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*"><div><strong>Bild auswählen</strong><small>Antippen, hineinziehen oder einfügen (Strg+V)</small></div></div>
-    <button id="demo" style="width:100%;margin-top:8px">Demo-Bild laden</button>
+    <div style="text-align:center"><button id="demo" class="linkBtn">oder Demo-Bild laden</button></div>
     <div class="subhead">Arbeitsauflösung</div>
     <div class="control"><select id="maxSize">
       <option value="256">max. 256 px</option>
-      <option value="512" selected>max. 512 px</option>
+      <option value="512">max. 512 px</option>
       <option value="1024">max. 1024 px</option>
       <option value="2048">max. 2048 px</option>
-      <option value="4096">Original (bis 4096 px)</option>
+      <option value="4096" selected>Original (bis 4096 px)</option>
     </select></div>
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
   </div></details>
@@ -125,7 +127,7 @@ button:disabled{opacity:.45;cursor:default}
     <div class="control" id="speedCtl" style="margin-top:13px"><div class="labelrow"><label for="speed">Geschwindigkeit</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0" max="100" step="1" value="45"></div>
     <div id="timeCtl" style="display:none;margin-top:13px">
       <div class="control"><div class="labelrow"><label for="dur">Gesamtdauer (m:ss)</label><span class="value" id="durValue"></span></div>
-        <input id="dur" type="text" inputmode="decimal" value="1:00" list="durPresets" autocomplete="off" spellcheck="false"
+        <input id="dur" type="text" inputmode="decimal" value="2:00" list="durPresets" autocomplete="off" spellcheck="false"
           style="width:100%;font:inherit;font-variant-numeric:tabular-nums;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text)">
         <datalist id="durPresets"><option value="0:10"><option value="0:30"><option value="1:00"><option value="2:00"><option value="3:00"><option value="5:00"></datalist></div>
       <div class="modeRow"><button id="curveExp" class="active">Exponentiell</button><button id="curveLin">Linear</button></div>
@@ -136,7 +138,7 @@ button:disabled{opacity:.45;cursor:default}
 
   <details class="sec" data-sec="view"><summary><span>Anzeige</span><em id="sumView"></em></summary><div class="secBody">
     <div class="checks">
-      <label><input type="checkbox" id="showMesh" checked> Dreiecksnetz anzeigen</label>
+      <label><input type="checkbox" id="showMesh"> Dreiecksnetz anzeigen</label>
       <label><input type="checkbox" id="showNew"> Neue Dreiecke hervorheben</label>
     </div>
   </div></details>
@@ -187,7 +189,7 @@ let W=0,H=0,SRC=null,OUT=null,outImg=null,loadedImage=null;
 let V,N,ERR,CAND,STAMP,MARK,BMARK,ERRN,wrongTotal=0,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
-let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
+let running=false,done=false,mode='time',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
 let strat=0,focusX=0,focusY=0,detailW=.5;
 // flat: solid triangles. Vertices then sit on pixel CORNERS (0..W × 0..H) and every pixel centre
 // belongs to exactly one triangle (top-left rule), so a fully refined mesh is pixel-perfect too.
@@ -572,9 +574,9 @@ function parseDur(txt){
   const sec=parts.reduce((a,v)=>a*60+v,0);
   return sec>=2&&sec<=36000?sec:null;
 }
-let durSec=60;
+let durSec=120;
 const fmtDur=d=>{const m=Math.floor(d/60),sec=d-m*60;return `${m}:${sec<10?'0':''}${+sec.toFixed(2)}`.replace('.',',')};
-let curve='exp';
+let curve='lin';
 function syncSpeed(){
   $('speedCtl').style.display=mode==='time'?'none':'';$('timeCtl').style.display=mode==='time'?'':'none';
   ['Const','Geo','Time'].forEach(m=>$('mode'+m).classList.toggle('active',mode===m.toLowerCase()));
