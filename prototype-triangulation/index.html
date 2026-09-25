@@ -83,7 +83,7 @@ button:disabled{opacity:.45;cursor:default}
     <div class="hint" id="speedHint"></div>
     <div class="checks" style="margin-top:10px">
       <label><input type="checkbox" id="showMesh" checked> Dreiecksnetz anzeigen</label>
-      <label><input type="checkbox" id="showPoints"> Neue Punkte hervorheben</label>
+      <label><input type="checkbox" id="showNew"> Neue Dreiecke hervorheben</label>
     </div>
   </div>
 
@@ -131,10 +131,10 @@ const nf=new Intl.NumberFormat('de-DE');
 /* ---------- state ---------- */
 let W=0,H=0,SRC=null,OUT=null,outImg=null,loadedImage=null;
 // triangles: V = vertex ids (3 per tri, CCW), N = neighbour tri across edge i (V[i]->V[i+1]), -1 = border
-let V,N,ERR,CAND,STAMP,MARK,triCount=0,triCap=0;
+let V,N,ERR,CAND,STAMP,MARK,BMARK,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
-let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentPts=[],rateHist=[];
+let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
 let lastStatT=0,meshDirty=true;
 
 /* ---------- geometry (integer coordinates → exact in doubles) ---------- */
@@ -151,7 +151,7 @@ function growTris(min){
   if(min<=triCap)return;let cap=Math.max(1024,triCap*2);while(cap<min)cap*=2;
   const g=(A,T,n)=>{const B=new T(n);if(A)B.set(A);return B};
   V=g(V,Int32Array,cap*3);N=g(N,Int32Array,cap*3);ERR=g(ERR,Float64Array,cap);CAND=g(CAND,Int32Array,cap);
-  STAMP=g(STAMP,Int32Array,cap);MARK=g(MARK,Int32Array,cap);triCap=cap;
+  STAMP=g(STAMP,Int32Array,cap);MARK=g(MARK,Int32Array,cap);BMARK=g(BMARK,Int32Array,cap);triCap=cap;
 }
 function addPoint(x,y){
   if(ptCount>=ptCap){const cap=Math.max(1024,ptCap*2);const a=new Int32Array(cap),b=new Int32Array(cap);if(PX){a.set(PX);b.set(PY)}PX=a;PY=b;ptCap=cap}
@@ -267,14 +267,15 @@ function insert(t){
   }
   legalize();
   for(let i=0;i<touched.length;i++)scanTri(touched[i]);
-  recentPts.push(p);
+  // remember every triangle created or reshaped by this insertion (deduped per batch)
+  for(let i=0;i<touched.length;i++){const t=touched[i];if(BMARK[t]!==batchId){BMARK[t]=batchId;recentTris.push(t)}}
 }
 
 /* ---------- setup ---------- */
 function initMesh(){
-  triCount=0;ptCount=0;hSize=0;insertId=0;done=false;carry=0;recentPts=[];
+  triCount=0;ptCount=0;hSize=0;insertId=0;done=false;carry=0;recentTris=[];batchId++;
   growTris(Math.max(1024,Math.min(W*H*2+16,1<<16)));
-  STAMP.fill(0);MARK.fill(-1);
+  STAMP.fill(0);MARK.fill(-1);BMARK.fill(-1);
   OUT.fill(0);
   const p0=addPoint(0,0),p1=addPoint(W-1,0),p2=addPoint(W-1,H-1),p3=addPoint(0,H-1);
   // CCW with respect to orient(): in image coords (y down) this is clockwise on screen, which is fine
@@ -299,7 +300,7 @@ function loadImage(img){
   origCanvas.width=W;origCanvas.height=H;origCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(SRC),W,H),0,0);
   source.width=W;source.height=H;source.getContext('2d').drawImage(origCanvas,0,0);
   const es=Math.max(1,Math.ceil(Math.max(W,H)/260));errmap.width=Math.ceil(W/es);errmap.height=Math.ceil(H/es);
-  V=N=ERR=CAND=STAMP=MARK=null;triCap=0;
+  V=N=ERR=CAND=STAMP=MARK=BMARK=null;triCap=0;
   initMesh();
   $('empty').style.display='none';
   ['play','step','step100','reset','finish','compare','download'].forEach(id=>$(id).disabled=false);
@@ -327,6 +328,7 @@ syncSpeed();
 /* ---------- main loop ---------- */
 function runInserts(n,timeBudget){
   const t0=performance.now();let c=0;
+  if(n>0){batchId++;recentTris.length=0} // highlight shows the triangles of the latest batch
   while(c<n){
     const t=hPopValid();
     if(t<0){done=true;break}
@@ -390,14 +392,14 @@ function drawOverlay(){
     octx.stroke();
     octx.strokeStyle=`rgba(0,0,0,${.08+.25*dens})`;octx.lineWidth*=.5;octx.stroke();
   }
-  if($('showPoints').checked&&recentPts.length){
-    const r=Math.max(1.5,Math.min(4,sx*.6))*(window.devicePixelRatio||1)*.7;
-    octx.fillStyle='#ff3b2f';octx.beginPath();
-    const from=Math.max(0,recentPts.length-3000);
-    for(let i=from;i<recentPts.length;i++){const p=recentPts[i];octx.moveTo(PX[p]*sx+ox+r,PY[p]*sy+oy);octx.arc(PX[p]*sx+ox,PY[p]*sy+oy,r,0,6.2832)}
-    octx.fill();
+  if($('showNew').checked&&recentTris.length){
+    octx.beginPath();
+    const from=Math.max(0,recentTris.length-8000);
+    for(let i=from;i<recentTris.length;i++){const k=3*recentTris[i],a=V[k],b=V[k+1],c=V[k+2];
+      octx.moveTo(PX[a]*sx+ox,PY[a]*sy+oy);octx.lineTo(PX[b]*sx+ox,PY[b]*sy+oy);octx.lineTo(PX[c]*sx+ox,PY[c]*sy+oy);octx.closePath()}
+    octx.fillStyle='rgba(255,59,47,.28)';octx.fill();
+    octx.lineWidth=(window.devicePixelRatio||1)*1.1;octx.lineJoin='round';octx.strokeStyle='#ff3b2f';octx.stroke();
   }
-  recentPts.length=0;
 }
 function updateStats(){
   if(!SRC)return;
@@ -440,7 +442,7 @@ const cmp=$('compare');
 cmp.addEventListener('pointerdown',e=>{e.preventDefault();showOrig(true)});
 ['pointerup','pointerleave','pointercancel'].forEach(t=>cmp.addEventListener(t,()=>showOrig(false)));
 $('download').onclick=()=>{const a=document.createElement('a');a.download=`triangulation-${ptCount}pts.png`;a.href=result.toDataURL('image/png');a.click()};
-$('showMesh').onchange=drawOverlay;$('showPoints').onchange=drawOverlay;
+$('showMesh').onchange=drawOverlay;$('showNew').onchange=drawOverlay;
 $('maxSize').onchange=()=>{if(loadedImage){setRunning(false);loadImage(loadedImage)}};
 
 function loadFile(file){
