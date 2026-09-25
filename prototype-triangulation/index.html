@@ -16,7 +16,10 @@ header p{margin:6px 0 20px;color:var(--muted);max-width:860px;line-height:1.45}
 .layout{display:grid;grid-template-columns:minmax(300px,370px) 1fr;gap:18px;align-items:start}
 .panel,.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px}
 .panel{padding:18px;position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto}
-.panel>.buttons:first-child{margin-top:0}
+.sec.solo{padding:14px 0 2px}
+.panel>.sec:first-child{border-top:0;margin-top:0}
+.panel>.sec:first-child>summary{padding-top:2px}
+.controls{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}
 .stage{padding:14px}
 .drop{position:relative;border:1.5px dashed var(--line);border-radius:14px;min-height:76px;display:grid;place-items:center;text-align:center;overflow:hidden;background:rgba(127,127,127,.035)}
 .drop.over{border-color:var(--accent)}
@@ -78,19 +81,6 @@ button:disabled{opacity:.45;cursor:default}
 <header><h1>Triangulation Restore</h1><p>Das Bild beginnt als zwei Dreiecke. Schritt für Schritt wird genau dort ein neuer Eckpunkt gesetzt, wo das Dreiecksnetz am stärksten vom Original abweicht; das Netz bleibt dabei eine Delaunay-Triangulierung. Die Farben werden innerhalb jedes Dreiecks linear interpoliert – bis jedes Pixel exakt stimmt.</p></header>
 <div class="layout">
 <aside class="panel">
-  <div class="buttons">
-    <button class="primary" id="play" disabled>Start</button>
-    <button id="step" disabled>+1 Punkt</button>
-    <button id="step100" disabled>+100 Punkte</button>
-    <button id="reset" disabled>Neu starten</button>
-    <button id="finish" disabled>Sofort fertig</button>
-    <button id="compare" disabled>Original (halten)</button>
-    <button id="download" disabled>PNG speichern</button>
-    <button id="record" disabled style="grid-column:1/-1">● Video aufnehmen</button>
-  </div>
-  <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
-  <div class="progress"><div id="progressBar"></div></div>
-
   <details class="sec" data-sec="image" open><summary><span>Bild</span><em id="sumImage"></em></summary><div class="secBody">
   <div class="drop" id="dropZone"><input class="fileInput" type="file" id="fileInput" accept="image/*"><div><strong>Bild auswählen</strong><small>Antippen, hineinziehen oder einfügen (Strg+V)</small></div></div>
     <button id="demo" style="width:100%;margin-top:8px">Demo-Bild laden</button>
@@ -105,8 +95,9 @@ button:disabled{opacity:.45;cursor:default}
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
   </div></details>
 
-  <details class="sec" data-sec="look" open><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
-    <button id="shuffle" style="width:100%;margin-bottom:12px">🎲 Zufall – Füllung, Reihenfolge &amp; Parameter würfeln</button>
+  <div class="sec solo"><button id="shuffle" style="width:100%">🎲 Zufall – Füllung, Reihenfolge &amp; Parameter würfeln</button></div>
+
+  <details class="sec" data-sec="look"><summary><span>Look</span><em id="sumLook"></em></summary><div class="secBody">
     <div class="subhead">Füllung</div>
     <div class="modeRow four"><button data-fill="grad" class="active">Verlauf</button><button data-fill="mosaic">Mosaik</button><button data-fill="flat">Einfarbig</button><button data-fill="poster">Poster</button></div>
     <div class="control" id="posterCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="posterK">Farben</label><span class="value" id="posterKValue"></span></div><input id="posterK" type="range" min="3" max="32" step="1" value="8"></div>
@@ -149,6 +140,18 @@ button:disabled{opacity:.45;cursor:default}
       <label><input type="checkbox" id="showNew"> Neue Dreiecke hervorheben</label>
     </div>
   </div></details>
+  <div class="controls">
+  <div class="buttons">
+    <button class="primary" id="play" disabled>Start</button>
+    <button id="reset" disabled>Neu starten</button>
+    <button id="finish" disabled>Sofort fertig</button>
+    <button id="compare" disabled>Original (halten)</button>
+    <button id="download" disabled>PNG speichern</button>
+    <button id="record" disabled style="grid-column:1/-1">● Video aufnehmen</button>
+  </div>
+  <div class="status" id="status">Zuerst ein Bild auswählen – oder das Demo-Bild verwenden.</div>
+  <div class="progress"><div id="progressBar"></div></div>
+  </div>
 </aside>
 
 <main class="stage"><div class="canvasWrap">
@@ -513,7 +516,7 @@ function loadImage(img){
   V=N=ERR=CAND=STAMP=MARK=BMARK=ERRN=null;triCap=0;
   initMesh();
   $('empty').style.display='none';
-  ['play','step','step100','reset','finish','compare','download','record'].forEach(id=>$(id).disabled=false);
+  ['play','reset','finish','compare','download','record'].forEach(id=>$(id).disabled=false);
   fitCanvas();present(true);
   updateSummaries();
   setStatus(`Bereit: ${W}×${H} px = ${nf.format(W*H)} Pixel. Start mit 4 Eckpunkten.`);
@@ -625,7 +628,7 @@ function replan(){ // (re)derive the schedule and put the clock where the curren
 // silent pre-run from scratch: same seed + same settings → exactly the point count of the real run
 async function dryRun(){
   estimating=true;const id=imgId,t0=performance.now();
-  ['play','step','step100','reset','finish'].forEach(b=>$(b).disabled=true);$('play').textContent='Berechne …';
+  ['play','reset','finish'].forEach(b=>$(b).disabled=true);$('play').textContent='Berechne …';
   initMesh(true);
   // progress estimate (calibrated on measured pre-runs, typically within ~5 % of the true time fraction), the larger of:
   //  a) remaining time ≈ wrong pixels × recent time per fixed pixel (trailing window of 5 chunks)
@@ -647,7 +650,7 @@ async function dryRun(){
   }
   est={key:estKey(),n:ptCount,ms:performance.now()-t0};
   initMesh(true);present(true);
-  ['play','step','step100','reset','finish'].forEach(b=>$(b).disabled=false);
+  ['play','reset','finish'].forEach(b=>$(b).disabled=false);
   estimating=false;syncSpeed();return true;
 }
 async function startTimed(){
@@ -795,8 +798,6 @@ function setStatus(t){$('status').textContent=t}
 
 /* ---------- controls ---------- */
 $('play').onclick=()=>{if(done||estimating)return;if(running)setRunning(false);else if(mode==='time')startTimed();else setRunning(true)};
-$('step').onclick=()=>{setRunning(false);runInserts(1,1e9);if(done)finish();else present(true)};
-$('step100').onclick=()=>{setRunning(false);runInserts(100,1e9);if(done)finish();else present(true)};
 $('reset').onclick=()=>{setRunning(false);initMesh();present(true);setRunning(false);setStatus('Zurückgesetzt auf 4 Eckpunkte.')};
 $('finish').onclick=()=>{
   setRunning(false);setStatus('Rechne bis pixelgenau …');
@@ -946,11 +947,6 @@ function updateSummaries(){
 }
 let sumRaf=0;
 ['input','change','click'].forEach(ev=>document.querySelector('.panel').addEventListener(ev,()=>{if(!sumRaf)sumRaf=requestAnimationFrame(()=>{sumRaf=0;updateSummaries()})}));
-document.querySelectorAll('details.sec').forEach(d=>{
-  // remembered per section; the image section always starts open, since the page starts without an image
-  if(d.dataset.sec!=='image')try{const v=localStorage.getItem('tri-sec-'+d.dataset.sec);if(v!==null)d.open=v==='1'}catch(e){}
-  d.addEventListener('toggle',()=>{try{localStorage.setItem('tri-sec-'+d.dataset.sec,d.open?'1':'0')}catch(e){}});
-});
 updateSummaries();
 
 /* ---------- Zufall: roll fill, order and their parameters, then start fresh ---------- */
