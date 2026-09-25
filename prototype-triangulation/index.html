@@ -86,6 +86,7 @@ button:disabled{opacity:.45;cursor:default}
       <option value="4">Fokus (Punkt antippen)</option>
       <option value="5">Vorhang (links → rechts)</option>
     </select></div>
+    <div class="control" id="detailCtl" style="margin-top:11px;display:none"><div class="labelrow"><label for="detailW">Detail-Gewicht</label><span class="value" id="detailWValue"></span></div><input id="detailW" type="range" min="0" max="100" step="5" value="50"></div>
     <div class="hint" id="strategyHint"></div>
   </div>
 
@@ -147,7 +148,7 @@ let V,N,ERR,CAND,STAMP,MARK,BMARK,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
 let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
-let strat=0,focusX=0,focusY=0;
+let strat=0,focusX=0,focusY=0,detailW=.5;
 let lastStatT=0,meshDirty=true;
 
 /* ---------- geometry (integer coordinates → exact in doubles) ---------- */
@@ -233,7 +234,7 @@ function scanTri(t){
   // every strategy only picks wrong pixels, so each one still ends pixel-perfect
   let key;
   switch(strat){
-    case 1:key=best+sum/(sum+1e6);break;                    // highest single-pixel error, ties by total
+    case 1:key=detailW*Math.log(best)+(1-detailW)*Math.log(sum)*(1-1e-6)+1e-6*Math.log(sum);break; // blend of peak and total error (log domain)
     case 2:key=area+Math.random()*.5;CAND[t]=altI;break;     // largest triangle, split near its centre
     case 3:key=Math.pow(Math.random(),1/nErr);CAND[t]=altI;break; // random, weighted by number of wrong pixels
     case 4:{const dx=sx3/3-focusX,dy=sy3/3-focusY;          // nearest to focus, error only as a mild factor
@@ -490,7 +491,7 @@ $('showMesh').onchange=drawOverlay;$('showNew').onchange=drawOverlay;
 /* ---------- insertion order ---------- */
 const STRAT_HINTS=[
   'Das Dreieck mit dem größten Gesamtfehler wird geteilt – große, falsche Flächen zuerst. Wirkt wie ein klassisches Grob-nach-fein.',
-  'Das Dreieck mit dem stärksten Einzelpixel-Fehler zuerst: harte Kanten, Schrift und kleine Lichter werden früh scharf, ruhige Flächen bleiben lange grob.',
+  'Mischung aus stärkstem Einzelpixel-Fehler und Gesamtfehler: Kanten, Augen und Schrift werden früher scharf. Bei 100 % nur noch Einzelfehler – ruhige Flächen bleiben dann sehr lange grob.',
   'Immer das größte noch fehlerhafte Dreieck, geteilt nahe seiner Mitte – das Netz verfeinert sich gleichmäßig, unabhängig vom Bildinhalt.',
   'Zufällige fehlerhafte Pixel, gewichtet nach Fläche – das Bild entsteht wie ein Pointillismus-Gemälde.',
   'Das Bild wird vom gewählten Punkt aus nach außen scharf. Tippe ins Bild, um den Fokus zu setzen (auch während es läuft).',
@@ -504,9 +505,14 @@ function reprioritize(){ // rebuild the queue: every triangle gets a key + candi
 function syncStrategy(){
   strat=+$('strategy').value;$('strategyHint').textContent=STRAT_HINTS[strat];
   result.style.cursor=strat===4?'crosshair':'';
+  $('detailCtl').style.display=strat===1?'':'none';
   reprioritize();
 }
 $('strategy').onchange=syncStrategy;syncStrategy();
+let detailRaf=0;
+const syncDetail=()=>{detailW=+$('detailW').value/100;$('detailWValue').textContent=Math.round(detailW*100)+' %';
+  if(strat===1&&!detailRaf)detailRaf=requestAnimationFrame(()=>{detailRaf=0;reprioritize()})};
+$('detailW').addEventListener('input',syncDetail);syncDetail();
 result.addEventListener('pointerdown',e=>{
   if(strat!==4||!W)return;
   const b=result.getBoundingClientRect();
