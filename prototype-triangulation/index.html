@@ -77,6 +77,18 @@ button:disabled{opacity:.45;cursor:default}
     <div class="hint">„Pixelgenau“ bezieht sich auf diese Auflösung. Größere Bilder brauchen deutlich mehr Punkte und Speicher.</div>
   </div>
 
+  <div class="group"><h2>Reihenfolge</h2>
+    <div class="control"><select id="strategy">
+      <option value="0" selected>Größter Fehler zuerst (grob → fein)</option>
+      <option value="1">Details zuerst (schärfste Stellen)</option>
+      <option value="2">Gleichmäßig (größte Dreiecke)</option>
+      <option value="3">Zufällig (Pointillismus)</option>
+      <option value="4">Fokus (Punkt antippen)</option>
+      <option value="5">Vorhang (links → rechts)</option>
+    </select></div>
+    <div class="hint" id="strategyHint"></div>
+  </div>
+
   <div class="group"><h2>Tempo</h2>
     <div class="modeRow"><button id="modeConst" class="active">Konstant</button><button id="modeGeo">Mitwachsend</button></div>
     <div class="control" style="margin-top:13px"><div class="labelrow"><label for="speed">Geschwindigkeit</label><span class="value" id="speedValue"></span></div><input id="speed" type="range" min="0" max="100" step="1" value="45"></div>
@@ -135,6 +147,7 @@ let V,N,ERR,CAND,STAMP,MARK,BMARK,triCount=0,triCap=0;
 let PX,PY,ptCount=0,ptCap=0;
 let hKey,hTri,hStamp,hSize=0,hCap=0;
 let running=false,done=false,mode='const',carry=0,lastT=0,insertId=0,recentTris=[],batchId=0,rateHist=[];
+let strat=0,focusX=0,focusY=0;
 let lastStatT=0,meshDirty=true;
 
 /* ---------- geometry (integer coordinates → exact in doubles) ---------- */
@@ -194,7 +207,8 @@ function scanTri(t){
   const minX=Math.min(ax,bx,cx),maxX=Math.max(ax,bx,cx),minY=Math.min(ay,by,cy),maxY=Math.max(ay,by,cy);
   // edge functions: w0 = orient(b,c,p) (weight of a), w1 = orient(c,a,p), w2 = orient(a,b,p)
   const e0x=by-cy,e1x=cy-ay,e2x=ay-by; // d/dx of w
-  let sum=0,best=0,bestI=-1;
+  const sx3=ax+bx+cx,sy3=ay+by+cy; // 3× centroid (integer)
+  let sum=0,best=0,bestI=-1,nErr=0,altD=Infinity,altI=-1;
   for(let y=minY;y<=maxY;y++){
     let w0=orient(bx,by,cx,cy,minX,y),w1=orient(cx,cy,ax,ay,minX,y),w2=orient(ax,ay,bx,by,minX,y);
     let i=(y*W+minX)*4,inside=false;
@@ -205,12 +219,29 @@ function scanTri(t){
             bb=Math.round((w0*b0+w1*b1+w2*b2)/area),al=Math.round((w0*a0+w1*a1+w2*a2)/area);
       OUT[i]=r;OUT[i+1]=g;OUT[i+2]=bb;OUT[i+3]=al;
       const e=Math.abs(r-SRC[i])+Math.abs(g-SRC[i+1])+Math.abs(bb-SRC[i+2])+Math.abs(al-SRC[i+3]);
-      if(e){sum+=e;if(e>best){best=e;bestI=i>>2}}
+      if(e){
+        sum+=e;nErr++;
+        if(e>best){best=e;bestI=i>>2}
+        if(strat===2){const dx=3*x-sx3,dy=3*y-sy3,d=dx*dx+dy*dy;if(d<altD){altD=d;altI=i>>2}} // wrong pixel nearest the centroid
+        else if(strat===3){if(Math.random()*nErr<1)altI=i>>2}                               // uniformly random wrong pixel
+        else if(strat===5){if(x<altD)altD=x}                                                // leftmost wrong column
+      }
     }
   }
-  // priority: total error of the triangle (big, wrong triangles first → coarse to fine)
   ERR[t]=sum;CAND[t]=bestI;
-  if(sum>0)hPush(sum,t);
+  if(sum===0)return;
+  // every strategy only picks wrong pixels, so each one still ends pixel-perfect
+  let key;
+  switch(strat){
+    case 1:key=best+sum/(sum+1e6);break;                    // highest single-pixel error, ties by total
+    case 2:key=area+Math.random()*.5;CAND[t]=altI;break;     // largest triangle, split near its centre
+    case 3:key=Math.pow(Math.random(),1/nErr);CAND[t]=altI;break; // random, weighted by number of wrong pixels
+    case 4:{const dx=sx3/3-focusX,dy=sy3/3-focusY;          // nearest to focus, error only as a mild factor
+      key=Math.log(sum)-Math.sqrt(dx*dx+dy*dy)/(.03*Math.hypot(W,H));break}
+    case 5:key=(W-altD)*2048+best;break;                     // leftmost wrong column first, split at worst pixel
+    default:key=sum;                                         // total error: big, wrong triangles first
+  }
+  hPush(key,t);
 }
 
 /* ---------- incremental Delaunay insertion ---------- */
@@ -300,6 +331,7 @@ function loadImage(img){
   origCanvas.width=W;origCanvas.height=H;origCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(SRC),W,H),0,0);
   source.width=W;source.height=H;source.getContext('2d').drawImage(origCanvas,0,0);
   const es=Math.max(1,Math.ceil(Math.max(W,H)/260));errmap.width=Math.ceil(W/es);errmap.height=Math.ceil(H/es);
+  focusX=W>>1;focusY=H>>1;
   V=N=ERR=CAND=STAMP=MARK=BMARK=null;triCap=0;
   initMesh();
   $('empty').style.display='none';
@@ -402,6 +434,15 @@ function drawOverlay(){
     octx.fillStyle='rgba(255,59,47,.28)';octx.fill();
     octx.lineWidth=(window.devicePixelRatio||1)*1.1;octx.lineJoin='round';octx.strokeStyle='#ff3b2f';octx.stroke();
   }
+  if(strat===4&&!done){
+    const d=window.devicePixelRatio||1,x=focusX*sx+ox,y=focusY*sy+oy;
+    octx.lineWidth=2*d;
+    for(const [col,w] of [['rgba(0,0,0,.6)',4*d],['#fff',2*d]]){
+      octx.strokeStyle=col;octx.lineWidth=w;octx.beginPath();octx.arc(x,y,9*d,0,6.2832);
+      octx.moveTo(x-15*d,y);octx.lineTo(x-4*d,y);octx.moveTo(x+4*d,y);octx.lineTo(x+15*d,y);
+      octx.moveTo(x,y-15*d);octx.lineTo(x,y-4*d);octx.moveTo(x,y+4*d);octx.lineTo(x,y+15*d);octx.stroke();
+    }
+  }
 }
 function updateStats(){
   if(!SRC)return;
@@ -445,6 +486,34 @@ cmp.addEventListener('pointerdown',e=>{e.preventDefault();showOrig(true)});
 ['pointerup','pointerleave','pointercancel'].forEach(t=>cmp.addEventListener(t,()=>showOrig(false)));
 $('download').onclick=()=>{const a=document.createElement('a');a.download=`triangulation-${ptCount}pts.png`;a.href=result.toDataURL('image/png');a.click()};
 $('showMesh').onchange=drawOverlay;$('showNew').onchange=drawOverlay;
+
+/* ---------- insertion order ---------- */
+const STRAT_HINTS=[
+  'Das Dreieck mit dem größten Gesamtfehler wird geteilt – große, falsche Flächen zuerst. Wirkt wie ein klassisches Grob-nach-fein.',
+  'Das Dreieck mit dem stärksten Einzelpixel-Fehler zuerst: harte Kanten, Schrift und kleine Lichter werden früh scharf, ruhige Flächen bleiben lange grob.',
+  'Immer das größte noch fehlerhafte Dreieck, geteilt nahe seiner Mitte – das Netz verfeinert sich gleichmäßig, unabhängig vom Bildinhalt.',
+  'Zufällige fehlerhafte Pixel, gewichtet nach Fläche – das Bild entsteht wie ein Pointillismus-Gemälde.',
+  'Das Bild wird vom gewählten Punkt aus nach außen scharf. Tippe ins Bild, um den Fokus zu setzen (auch während es läuft).',
+  'Spalte für Spalte von links nach rechts pixelgenau – wie ein Vorhang, der sich öffnet.'];
+function reprioritize(){ // rebuild the queue: every triangle gets a key + candidate for the current strategy
+  if(!V||done)return;
+  hSize=0;
+  for(let t=0;t<triCount;t++){STAMP[t]++;scanTri(t)}
+  drawOverlay();
+}
+function syncStrategy(){
+  strat=+$('strategy').value;$('strategyHint').textContent=STRAT_HINTS[strat];
+  result.style.cursor=strat===4?'crosshair':'';
+  reprioritize();
+}
+$('strategy').onchange=syncStrategy;syncStrategy();
+result.addEventListener('pointerdown',e=>{
+  if(strat!==4||!W)return;
+  const b=result.getBoundingClientRect();
+  focusX=Math.max(0,Math.min(W-1,Math.floor((e.clientX-b.left)/b.width*W)));
+  focusY=Math.max(0,Math.min(H-1,Math.floor((e.clientY-b.top)/b.height*H)));
+  reprioritize();
+});
 $('maxSize').onchange=()=>{if(loadedImage){setRunning(false);loadImage(loadedImage)}};
 
 function loadFile(file){
