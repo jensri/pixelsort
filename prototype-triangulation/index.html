@@ -611,14 +611,17 @@ async function dryRun(){
   estimating=true;const id=imgId,t0=performance.now();
   ['play','step','step100','reset','finish'].forEach(b=>$(b).disabled=true);$('play').textContent='Berechne …';
   initMesh(true);
-  // progress: remaining points ≈ wrong pixels × recent points-per-fixed-pixel (smoothed); shown monotonic, < 100 % until done
-  let pct=0,rate=0,lastPts=ptCount,lastWrong=wrongTotal,lastShow=0;
+  // progress estimate (calibrated on measured pre-runs, typically within ~5 % of the true time fraction), the larger of:
+  //  a) remaining time ≈ wrong pixels × recent time per fixed pixel (trailing window of 5 chunks)
+  //  b) √(points / (0.9 · initially wrong pixels)): photos end with ≈0.8–1.0 points per wrong pixel, and since early
+  //     points are expensive (big triangles), the point fraction grows roughly with the square of the time fraction
+  const W0=Math.max(1,wrongTotal),hist=[[0,wrongTotal]];let pct=0,lastShow=0;
   while(!done){
     runInserts(1e9,40);
-    const dp=ptCount-lastPts,dw=lastWrong-wrongTotal;
-    if(dp>0&&dw>0){const r=dp/dw;rate=rate?rate*.8+r*.2:r}
-    lastPts=ptCount;lastWrong=wrongTotal;
-    if(rate){const est=ptCount/(ptCount+Math.max(0,wrongTotal)*rate);pct=Math.max(pct,Math.min(99,Math.floor(est*100)))}
+    const t=performance.now()-t0;hist.push([t,wrongTotal]);
+    const [ht,hw]=hist[Math.max(0,hist.length-6)],dt=t-ht,dw=hw-wrongTotal;
+    const a=dt>0&&dw>0?t/(t+Math.max(0,wrongTotal)*dt/dw):0,b=Math.sqrt(Math.min(1,ptCount/(.9*W0)));
+    pct=Math.max(pct,Math.min(99,Math.floor(Math.max(a,b)*100)));
     const now=performance.now();
     if(now-lastShow>100){lastShow=now;
       $('play').textContent=`Berechne … ${pct} %`;
